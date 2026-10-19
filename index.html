@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Truco Bot</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23c8261f%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-size=%2722%27 text-anchor=%27middle%27 fill=%27%23f7f1e3%27 font-family=%27Georgia,serif%27 font-weight=%27900%27%3ET%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=DM+Sans:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="css/mesa.css">
+</head>
+<body>
+<div class="wall">
+  <main class="plate table" aria-label="Mesa de truco">
+    <span class="chips" aria-hidden="true"></span>
+    <i class="rivet" aria-hidden="true"></i><i class="rivet" aria-hidden="true"></i><i class="rivet" aria-hidden="true"></i><i class="rivet" aria-hidden="true"></i>
+
+    <header class="plate-head">
+      <h1>Truco</h1>
+      <div class="tools">
+        <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="true" aria-label="Sonido activado">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="spk" d="M4 9v6h4l5 4V5L8 9H4z"/>
+            <path class="wave" d="M16.5 9.2a4 4 0 0 1 0 5.6M19 6.7a7.5 7.5 0 0 1 0 10.6"/>
+            <path class="cross" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/>
+          </svg>
+        </button>
+        <a class="deck-link" href="sala">Con amigos</a>
+        <a class="deck-link" href="cartas">Cartas</a>
+      </div>
+    </header>
+
+    <section class="board" aria-label="Marcador">
+      <div class="score-row you"><span class="score-name">Vos</span><div class="tally" id="tally-you"></div><span class="score-num" id="num-you">0</span></div>
+      <div class="score-row bot"><span class="score-name">Bot</span><div class="tally" id="tally-bot"></div><span class="score-num" id="num-bot">0</span></div>
+      <div class="score-legend"><div class="halves"><span>malas</span><span>buenas</span></div></div>
+    </section>
+
+    <div class="seat seat-bot">
+      <div class="seat-head">Bot <span class="chip" id="bot-mano" hidden>Mano</span></div>
+      <div class="hand" id="bot-hand" aria-label="Cartas del bot"></div>
+      <div class="bubble" id="bot-bubble" role="status"></div>
+    </div>
+
+    <div class="center">
+      <div class="tricks" id="tricks"></div>
+      <div class="status" id="status" aria-live="polite"></div>
+    </div>
+
+    <div class="seat seat-you" id="seat-you">
+      <div class="bubble" id="you-bubble" role="status"></div>
+      <div class="seat-head">Vos <span class="chip" id="you-mano" hidden>Mano</span></div>
+      <div class="hint" id="envido-hint"></div>
+      <div class="hand" id="you-hand" aria-label="Tus cartas"></div>
+    </div>
+
+    <div class="dock"><div class="actions" id="actions"></div></div>
+  </main>
+
+    <aside class="side">
+      <details class="panel" id="brain" aria-label="Lo que el bot aprendió de vos">
+        <summary>Lo que el bot sabe de vos</summary>
+        <div class="panel-body">
+          <p class="panel-sub" id="brain-sub"></p>
+          <div id="insights"></div>
+          <button class="btn ghost" id="reset-brain" type="button">Borrar memoria del bot</button>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary>Reglas y alcance</summary>
+        <ul>
+          <li>Mazo español de 40 cartas, 3 cartas cada uno. Gana la mano quien gana dos bazas; la parda se desempata como en el truco argentino.</li>
+          <li>Truco, retruco y vale cuatro. Envido, real envido y falta envido. Se puede cantar envido primero cuando te cantan truco.</li>
+          <li>Se juega a 30 puntos. La falta envido vale lo que le falta al que va ganando para llegar a 30.</li>
+          <li>No hay flor ni "son buenas": al aceptar un envido se muestran los puntos de los dos.</li>
+          <li>El bot aprende de cómo jugás y lo guarda en este navegador. No se envía a ningún servidor.</li>
+        </ul>
+      </details>
+
+      <details class="panel">
+        <summary>Historial de la partida</summary>
+        <ul class="log" id="log"></ul>
+      </details>
+    </aside>
+</div>
+
+<div class="overlay" id="end" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="end-title">
+    <h2 id="end-title"></h2>
+    <p id="end-text"></p>
+    <button class="btn primary" id="again" type="button">Jugar otra partida</button>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/emblems.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/bot.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/ui.js"></script>

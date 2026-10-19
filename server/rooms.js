@@ -1,0 +1,393 @@
+'use strict';
+/* Salas de truco: lobby, asientos, partida y bots. Sin red ni reloj propio: api.js lo expone por HTTP.
+ * El servidor es la autoridad: cada jugador solo recibe la vista de su asiento.
+ *
+ * Las salas viven en un store (memoria o Supabase), no en el proceso: puede haber una instancia distinta
+ * en cada pedido. Los pasos con espera (jugada de un bot, pausa entre manos) quedan guardados en
+ * `room.due`; cada pedido avanza los vencidos antes de atender, y el polling de los clientes hace de reloj.
+ *
+ * Contrato del store (todo async):
+ *   get(code) -> { room, version } | null    create(room) -> false si el codigo existe
+ *   save(room, version) -> false si cambio en el medio    count()    sweep(cutoffMs) */
+const crypto = require('node:crypto');
+const Room = require('../js/room-engine.js');
+const Bot = require('../js/room-bot.js');
+const { createMemoryStore } = require('./store-memory.js');
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_LENGTH = 5;
+const CODE_ATTEMPTS = 20;
+const MAX_ROOMS = 200;
+const MAX_NAME = 14;
+const EVENT_BUFFER = 200;
+const SIGN_BUFFER = 20;
+const SIGN_COOLDOWN_MS = 1000;
+const HAND_PAUSE_MS = 3500;
+const BOT_DELAY_MIN_MS = 700;
+const BOT_DELAY_SPREAD_MS = 700;
+const ROOM_IDLE_MS = 2 * 60 * 60 * 1000;
+const PRESENCE_MS = 8000; // visto hace menos que esto = conectado
+const PRESENCE_TOUCH_MS = 3000; // cada cuanto un poll refresca su "visto"
+const MAX_ADVANCE_STEPS = 30; // pasos automaticos por pedido
+const STALE_DUE_MS = 30_000; // un paso vencido hace mas que esto se reprograma a "ahora"
+const MAX_SAVE_ATTEMPTS = 4;
+const ENVIDO_WHATS = new Set(['envido', 'real', 'falta']);
+const FLOR_WHATS = new Set(['flor', 'contraflor', 'resto']);
+const ACTION_TYPES = new Set(['play', 'discard', 'truco', 'envido', 'accept', 'reject', 'mazo', 'ask-flor', 'flor']);
+
+/** Señas fijas entre companeros: nadie escribe texto libre. */
+const SIGNS = {
+  'uno-espada': 'Tengo el 1 de espadas',
+  'uno-basto': 'Tengo el 1 de bastos',
+  'siete-espada': 'Tengo el 7 de espadas',
+  'siete-oro': 'Tengo el 7 de oros',
+  tres: 'Tengo un 3',
+  'envido-alto': 'Tengo buen envido',
+  'envido-bajo': 'Envido bajo',
+  nada: 'No tengo nada',
+  truco: 'Cantá truco',
+  quiero: 'Quiero',
+  'no-quiero': 'No quieras',
+  mazo: 'Andá al mazo',
+};
+
+class RoomError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function cleanName(raw, fallback) {
+  const name = String(raw ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
+  return name || fallback;
+}
+
+function sameToken(a, b) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+function validAction(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action)) return false;
+  if (!ACTION_TYPES.has(action.type)) return false;
+  if ((action.type === 'play' || action.type === 'discard') && !Number.isInteger(action.index)) return false;
+  if (action.type === 'envido' && !ENVIDO_WHATS.has(action.what)) return false;
+  if (action.type === 'flor' && !FLOR_WHATS.has(action.what)) return false;
+  return true;
+}
+
+const newToken = () => crypto.randomBytes(16).toString('hex');
+const emptySeat = () => ({ kind: 'empty', name: '', token: null, lastSeen: 0 });
+const humanSeat = (name, t) => ({ kind: 'human', name, token: newToken(), lastSeen: t });
+const botSeat = (seat) => ({ kind: 'bot', name: `Bot ${seat + 1}`, token: null, lastSeen: 0 });
+
+function newCode() {
+  let code = '';
+  for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+  return code;
+}
+
+function seatOf(room, token) {
+  const seat = room.seats.findIndex((s) => s.kind === 'human' && sameToken(s.token, token));
+  if (seat < 0) throw new RoomError(403, 'No sos parte de esta sala');
+  return seat;
+}
+
+function requireHost(room, token) {
+  if (seatOf(room, token) !== room.host) throw new RoomError(403, 'Solo quien creó la sala puede hacer esto');
+}
+
+/** En el trio el mano juega solo: no tiene a quien señar. */
+function hasPartner(room, seat) {
+  const teams = room.state && room.state.teams;
+  return Boolean(teams) && teams.filter((t) => t === teams[seat]).length > 1;
+}
+
+const isConnected = (s, t) => s.kind === 'bot' || t - s.lastSeen < PRESENCE_MS;
+
+const publicSeats = (room, t) => room.seats.map((s, seat) => ({
+  seat, kind: s.kind, name: s.name, connected: isConnected(s, t),
+  team: room.state && room.state.teams ? room.state.teams[seat] : null,
+}));
+
+function snapshotOf(room, seat, since, t) {
+  const team = room.state && room.state.teams ? room.state.teams[seat] : null;
+  const partner = hasPartner(room, seat);
+  return {
+    code: room.code,
+    mode: room.mode,
+    n: room.n,
+    status: room.status,
+    host: room.host,
+    seat,
+    seats: publicSeats(room, t),
+    view: room.state && room.state.hands ? Room.viewFor(room.state, seat) : null,
+    seq: room.seq,
+    events: room.events.filter((e) => e.seq > since),
+    signs: !partner ? [] : room.signs.filter((x) => x.team === team && x.handNo === (room.state && room.state.handNo)),
+    signOptions: !partner || room.status !== 'playing' ? [] : Object.entries(SIGNS).map(([id, text]) => ({ id, text })),
+  };
+}
+
+function createRoomManager({ store = createMemoryStore(), rng = Math.random, now = Date.now } = {}) {
+  // ---------- persistencia ----------
+
+  async function load(code) {
+    const rec = await store.get(String(code).toUpperCase());
+    if (!rec) throw new RoomError(404, 'No existe esa sala');
+    return rec;
+  }
+
+  /** Lee, avanza lo vencido, aplica `fn` y guarda; si otro pedido guardo antes, repite sobre lo nuevo.
+   * Con `always: false` solo guarda si algo cambio (`ctx.dirty`). */
+  async function mutate(code, fn, { always = true } = {}) {
+    for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt++) {
+      const { room, version } = await load(code);
+      const t = now();
+      const ctx = { dirty: advance(room, t) };
+      const result = fn(room, t, ctx);
+      if (!always && !ctx.dirty) return result;
+      room.touchedAt = t;
+      if (await store.save(room, version)) return result;
+    }
+    throw new RoomError(503, 'La sala está muy ocupada, probá de nuevo');
+  }
+
+  // ---------- pasos automaticos ----------
+
+  /** Aplica los pasos vencidos en orden; cada uno programa el siguiente desde su propia hora. */
+  function advance(room, t) {
+    if (room.due && t - room.due.at > STALE_DUE_MS) room.due.at = t;
+    let steps = 0;
+    while (room.due && room.due.at <= t && steps < MAX_ADVANCE_STEPS) {
+      const { at, kind, seat } = room.due;
+      room.due = null;
+      steps += 1;
+      try {
+        if (kind === 'deal') deal(room, at);
+        else botMove(room, seat, at);
+      } catch (err) {
+        console.error(`Paso automático fallido en la sala ${room.code}:`, err);
+        driveBots(room, at);
+      }
+    }
+    return steps > 0;
+  }
+
+  function record(room, events) {
+    for (const ev of events) {
+      room.seq += 1;
+      room.events.push({ seq: room.seq, ...ev });
+    }
+    if (room.events.length > EVENT_BUFFER) room.events.splice(0, room.events.length - EVENT_BUFFER);
+  }
+
+  function deal(room, base) {
+    const { state, events } = Room.dealHand(room.state, rng);
+    room.state = state;
+    record(room, events);
+    driveBots(room, base);
+  }
+
+  function afterAction(room, events, base) {
+    record(room, events);
+    const { phase } = room.state;
+    if (phase === 'game-over') {
+      room.due = null;
+      room.status = 'ended';
+    } else if (phase === 'hand-over') {
+      room.due = { at: base + HAND_PAUSE_MS, kind: 'deal', seat: null };
+    } else {
+      driveBots(room, base);
+    }
+  }
+
+  function actingSeats(room) {
+    const s = room.state;
+    return Array.from({ length: s.n }, (_, i) => i).filter((i) => Room.legalActions(s, i).length > 0);
+  }
+
+  /** Un bot actua solo si ningun humano tiene que decidir ahora. */
+  function driveBots(room, base) {
+    room.due = null;
+    if (room.status !== 'playing' || !room.state) return;
+    const s = room.state;
+    if (s.phase === 'hand-over' || s.phase === 'game-over' || s.phase === 'idle') return;
+    const actors = actingSeats(room);
+    if (!actors.length || actors.some((seat) => room.seats[seat].kind === 'human')) return;
+    const delay = BOT_DELAY_MIN_MS + rng() * BOT_DELAY_SPREAD_MS;
+    room.due = { at: base + delay, kind: 'bot', seat: actors[0] };
+  }
+
+  function botMove(room, seat, base) {
+    if (room.status !== 'playing' || room.seats[seat].kind !== 'bot') return;
+    const view = Room.viewFor(room.state, seat, { team: true });
+    if (!view.legal.length) return;
+    applyAction(room, seat, Bot.decide(view, rng), base);
+  }
+
+  function applyAction(room, seat, action, base) {
+    let result;
+    try {
+      result = Room.step(room.state, seat, action, rng);
+    } catch (err) {
+      throw new RoomError(409, 'Esa jugada no es válida ahora');
+    }
+    room.state = result.state;
+    afterAction(room, result.events, base);
+  }
+
+  // ---------- lobby ----------
+
+  async function create({ mode = 'duel', name } = {}) {
+    if (!(mode in Room.MODES)) throw new RoomError(400, 'Modo inválido');
+    await store.sweep(now() - ROOM_IDLE_MS);
+    if ((await store.count()) >= MAX_ROOMS) throw new RoomError(503, 'Hay demasiadas salas abiertas, probá más tarde');
+    const t = now();
+    const n = Room.seatCount(mode);
+    for (let attempt = 0; attempt < CODE_ATTEMPTS; attempt++) {
+      const room = {
+        code: newCode(), mode, n, status: 'lobby', host: 0,
+        seats: Array.from({ length: n }, emptySeat),
+        state: null, events: [], seq: 0, signs: [], signSeq: 0, lastSign: {}, due: null, touchedAt: t,
+      };
+      room.seats[0] = humanSeat(cleanName(name, 'Jugador 1'), t);
+      if (await store.create(room)) return { code: room.code, token: room.seats[0].token, seat: 0 };
+    }
+    throw new RoomError(503, 'No se pudo crear la sala, probá de nuevo');
+  }
+
+  function join(code, name) {
+    return mutate(code, (room, t) => {
+      if (room.status !== 'lobby') throw new RoomError(409, 'La partida ya empezó');
+      const seat = room.seats.findIndex((s) => s.kind === 'empty');
+      if (seat < 0) throw new RoomError(409, 'La sala está llena');
+      room.seats[seat] = humanSeat(cleanName(name, `Jugador ${seat + 1}`), t);
+      return { code: room.code, token: room.seats[seat].token, seat };
+    });
+  }
+
+  async function info(code) {
+    const { room } = await load(code);
+    return { code: room.code, mode: room.mode, status: room.status, seats: publicSeats(room, now()) };
+  }
+
+  function configure(code, token, { mode }) {
+    return mutate(code, (room) => {
+      requireHost(room, token);
+      if (room.status !== 'lobby') throw new RoomError(409, 'Solo se puede cambiar el modo en el lobby');
+      if (!(mode in Room.MODES)) throw new RoomError(400, 'Modo inválido');
+      const n = Room.seatCount(mode);
+      const people = room.seats.filter((s) => s.kind === 'human');
+      if (people.length > n) throw new RoomError(409, 'Hay más jugadores que lugares en ese modo');
+      const keep = room.seats.filter((s) => s.kind !== 'empty');
+      const hostToken = room.seats[room.host].token;
+      room.mode = mode;
+      room.n = n;
+      room.seats = Array.from({ length: n }, (_, i) => keep[i] || emptySeat());
+      room.host = room.seats.findIndex((s) => s.token === hostToken);
+    });
+  }
+
+  function sit(code, token, seat) {
+    return mutate(code, (room) => {
+      const from = seatOf(room, token);
+      if (room.status !== 'lobby') throw new RoomError(409, 'La partida ya empezó');
+      if (!Number.isInteger(seat) || seat < 0 || seat >= room.n) throw new RoomError(400, 'Asiento inválido');
+      if (room.seats[seat].kind !== 'empty' && seat !== from) throw new RoomError(409, 'Ese lugar está ocupado');
+      if (seat === from) return;
+      room.seats[seat] = room.seats[from];
+      room.seats[from] = emptySeat();
+      if (room.host === from) room.host = seat;
+    });
+  }
+
+  /** El anfitrion llena o vacia lugares con bots; durante la partida cambia a un humano por un bot. */
+  function setSeat(code, token, seat, kind) {
+    return mutate(code, (room, t) => {
+      requireHost(room, token);
+      if (!Number.isInteger(seat) || seat < 0 || seat >= room.n) throw new RoomError(400, 'Asiento inválido');
+      if (!['bot', 'empty'].includes(kind)) throw new RoomError(400, 'Tipo de asiento inválido');
+      if (seat === room.host) throw new RoomError(409, 'No podés cambiar tu propio lugar');
+      if (room.status === 'playing') {
+        if (kind !== 'bot') throw new RoomError(409, 'En partida solo se puede reemplazar por un bot');
+      } else if (room.status !== 'lobby') {
+        throw new RoomError(409, 'La partida terminó');
+      }
+      room.seats[seat] = kind === 'bot' ? botSeat(seat) : emptySeat();
+      if (room.status === 'playing') driveBots(room, t);
+    });
+  }
+
+  function start(code, token) {
+    return mutate(code, (room, t) => {
+      requireHost(room, token);
+      if (room.status !== 'lobby') throw new RoomError(409, 'La partida ya empezó');
+      room.seats = room.seats.map((s, seat) => (s.kind === 'empty' ? botSeat(seat) : s));
+      room.state = Room.newGame(room.mode, rng);
+      room.status = 'playing';
+      room.events = [];
+      deal(room, t);
+      return snapshotOf(room, seatOf(room, token), 0, t);
+    });
+  }
+
+  function rematch(code, token) {
+    return mutate(code, (room) => {
+      requireHost(room, token);
+      if (room.status !== 'ended') throw new RoomError(409, 'La partida no terminó');
+      room.due = null;
+      room.status = 'lobby';
+      room.state = null;
+      room.events = [];
+      room.signs = [];
+    });
+  }
+
+  // ---------- partida ----------
+
+  function act(code, token, action) {
+    return mutate(code, (room, t) => {
+      const seat = seatOf(room, token);
+      if (room.status !== 'playing') throw new RoomError(409, 'La partida no está en juego');
+      if (!validAction(action)) throw new RoomError(400, 'Jugada inválida');
+      applyAction(room, seat, action, t);
+    });
+  }
+
+  function sign(code, token, id) {
+    return mutate(code, (room, t) => {
+      const seat = seatOf(room, token);
+      if (room.status !== 'playing' || !hasPartner(room, seat)) throw new RoomError(409, 'No hay compañero para señar');
+      if (!Object.hasOwn(SIGNS, id)) throw new RoomError(400, 'Seña inválida');
+      if (t - (room.lastSign[seat] || 0) < SIGN_COOLDOWN_MS) throw new RoomError(429, 'Esperá un momento antes de señar de nuevo');
+      room.lastSign[seat] = t;
+      room.signSeq += 1;
+      room.signs.push({ id: room.signSeq, seat, team: room.state.teams[seat], text: SIGNS[id], handNo: room.state.handNo });
+      if (room.signs.length > SIGN_BUFFER) room.signs.shift();
+    });
+  }
+
+  // ---------- vistas ----------
+
+  /** Lo que pide cada cliente cada ~1 s: avanza los bots, marca presencia y devuelve su vista. */
+  function snapshot(code, token, since = 0) {
+    return mutate(code, (room, t, ctx) => {
+      const seat = seatOf(room, token);
+      const me = room.seats[seat];
+      if (t - me.lastSeen > PRESENCE_TOUCH_MS) {
+        me.lastSeen = t;
+        ctx.dirty = true;
+      }
+      return snapshotOf(room, seat, Math.max(0, Number(since) || 0), t);
+    }, { always: false });
+  }
+
+  const sweep = () => store.sweep(now() - ROOM_IDLE_MS);
+
+  return { create, join, info, configure, sit, setSeat, start, rematch, act, sign, snapshot, sweep, size: () => store.count() };
+}
+
+module.exports = { createRoomManager, RoomError, SIGNS, HAND_PAUSE_MS, BOT_DELAY_MIN_MS, BOT_DELAY_SPREAD_MS, PRESENCE_MS };

@@ -1,0 +1,9 @@
+{
+  "name": "truco-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Truco argentino 1v1 contra un bot que aprende de tu estilo de juego",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}

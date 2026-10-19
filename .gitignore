@@ -1,0 +1,8 @@
+serve.log
+node_modules/
+.vercel/
+.env
+.env.*
+!.env.example
+PRODUCT.md
+.impeccable/

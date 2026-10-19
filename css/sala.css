@@ -1,0 +1,235 @@
+/* Salas: entrada, lobby y mesa para varios jugadores. Se apoya en mesa.css (placa, botones, cartas, menus). */
+
+.screen, .screen-table { flex: 1; display: grid; gap: 14px; align-content: start; }
+.screen[hidden], .screen-table[hidden] { display: none; }
+.screen-table { display: flex; flex-direction: column; gap: 10px; }
+.table-main { container-type: inline-size; display: flex; flex-direction: column; gap: 10px; min-width: 0; align-self: stretch; flex: 1;
+  --cw-hand: clamp(54px, 27cqw, 116px); --cw-bot: clamp(28px, 13cqw, 58px); }
+@media (min-width: 960px) { .sala:has(.side[hidden]) { grid-template-columns: minmax(0, 620px); } }
+
+.screen-title { margin: 0; font-family: var(--display); font-weight: 400; font-size: 28px; line-height: 1.1; letter-spacing: 0.02em; color: var(--porcelain); }
+.screen-sub { margin: 0; color: var(--porcelain-dim); font-size: 15px; font-weight: 500; }
+.form-error { margin: 0; color: #ff9d96; font-weight: 700; font-size: 15px; }
+.form-error[hidden] { display: none; }
+.text-link { justify-self: center; color: var(--porcelain); font-weight: 700; padding: 10px 6px; }
+
+.field { display: grid; gap: 6px; font-size: 13px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--porcelain-dim); }
+.field input {
+  min-height: 52px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--wall);
+  background: var(--porcelain); color: var(--ink); box-shadow: 3px 3px 0 var(--wall);
+  font: inherit; font-size: 18px; font-weight: 700; letter-spacing: 0; text-transform: none;
+}
+.field input::placeholder { color: #6a6d78; font-weight: 500; }
+.field input:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+
+.modes { display: grid; gap: 10px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.modes legend { padding: 0 0 8px; font-size: 13px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--porcelain-dim); }
+.mode {
+  position: relative; display: grid; gap: 2px; padding: 12px 14px; border-radius: 12px; cursor: pointer;
+  background: var(--enamel-hi); border: 2px solid var(--wall); box-shadow: 3px 3px 0 var(--wall);
+  transition: transform 120ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+.mode input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.mode-name { font-family: var(--display); font-size: 20px; letter-spacing: 0.02em; }
+.mode-desc { font-size: 14px; color: var(--porcelain-dim); }
+.mode:has(input:checked) { background: var(--porcelain); color: var(--ink); border-color: var(--signal); box-shadow: 3px 3px 0 var(--signal-deep); }
+.mode:has(input:checked) .mode-desc { color: #3a3d47; }
+.mode:has(input:focus-visible) { outline: 3px solid var(--signal); outline-offset: 3px; }
+.mode:active { transform: translate(2px, 2px); }
+
+.btn.mini { flex: 0 0 auto; min-height: 44px; padding: 0 14px; font-size: 14px; letter-spacing: 0.03em; font-family: var(--font); font-weight: 800; }
+.btn.mini.on { --face: var(--porcelain); --fg: var(--ink); }
+.screen > .btn, .screen-table .btn.wide { flex: none; width: 100%; }
+
+/* lobby */
+.invite { display: grid; gap: 6px; justify-items: center; padding: 14px; border-radius: 14px; background: var(--porcelain); color: var(--ink); border: 2px solid var(--wall); box-shadow: 4px 4px 0 var(--wall); }
+.invite-label { font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #4a4d58; }
+.invite-code { font-family: var(--display); font-size: 44px; letter-spacing: 0.18em; line-height: 1; padding-left: 0.18em; }
+.invite .btn { --face: var(--ink); --fg: var(--porcelain); flex: none; min-width: 200px; margin-top: 4px; }
+.mode-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.mode-pick[hidden] { display: none; }
+.seat-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.seat-group { margin-top: 4px; font-family: var(--display); font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--signal); }
+.seat-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--wall); border: 2px solid var(--enamel-hi); }
+.seat-item.human { border-color: var(--porcelain-dim); }
+.seat-item.empty { border-style: dashed; color: var(--porcelain-dim); }
+.seat-who { display: grid; gap: 1px; min-width: 0; }
+.seat-who strong { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat-who small { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--porcelain-dim); }
+.seat-actions { display: flex; gap: 6px; justify-content: flex-end; flex: none; }
+.seat-actions .btn.mini { padding: 0 10px; }
+#start[hidden] { display: none; }
+
+/* planilla de puntos: una columna por jugador, nombre arriba, palitos debajo */
+.planilla { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); padding: 0; gap: 0; overflow: hidden; }
+.plan-col { position: relative; display: grid; align-content: start; min-width: 0; }
+.plan-col + .plan-col { border-left: 3px solid var(--ink); }
+.col-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; padding: 6px 10px 4px; border-bottom: 3px solid var(--ink); min-width: 0; }
+.plan-col .score-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.plan-col .score-num { font-size: 26px; }
+.plan-col .tally { padding: 8px 10px 8px; }
+.plan-col .tally svg { max-height: none; width: 100%; height: auto; }
+.plan-col.foe .score-name, .plan-col.foe .score-num { color: var(--lacre); }
+.plan-col.foe .tally .stick.on { stroke: var(--lacre); }
+.plan-col .score-pop { top: 2px; right: 8px; }
+
+/* los demas asientos */
+.rivals { display: grid; gap: 8px; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
+.rivals.n1 { --cols: 1; }
+.rivals.n2 { --cols: 2; }
+.rivals.n3 { --cols: 3; --cw-bot: clamp(24px, 9cqw, 44px); }
+.rival {
+  position: relative; display: grid; gap: 6px; align-content: start; padding: 8px 10px; min-width: 0;
+  border-radius: 12px; background: var(--wall); border: 2px solid var(--enamel-hi);
+  transition: border-color 200ms var(--ease-out), opacity 200ms var(--ease-out);
+}
+.rival.ally { border-color: var(--porcelain-dim); }
+.rival.turn { border-color: var(--signal); }
+.rival.off { opacity: 0.6; }
+.rival-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.rival-name { font-family: var(--display); font-size: 15px; letter-spacing: 0.03em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rivals.n1 .rival { grid-template-columns: auto 1fr; align-items: center; }
+.rivals.n1 .rival-side { grid-column: 1 / -1; }
+.tag { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--porcelain-dim); color: var(--porcelain-dim); }
+.rival-hand { --cw: var(--cw-bot); display: flex; min-height: calc(var(--cw) * 1.5); }
+.rival-hand .card + .card { margin-left: calc(var(--cw) * -0.3); }
+.rival-side { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rival-side:empty { display: none; }
+.rival .bubble { top: -14px; right: 4px; max-width: 96%; font-size: clamp(16px, 4.6vw, 22px); padding: 4px 10px 6px; }
+
+/* bazas: hasta cuatro cartas superpuestas por baza */
+.tricks { gap: clamp(6px, 2.4vw, 20px); align-items: flex-start; }
+.tricks.n2 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 4.6), 110px); }
+.tricks.n3 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 5.7), 110px); }
+.tricks.n4 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 7.3), 110px); }
+.baza { --cw: var(--cw-trick); position: relative; display: grid; justify-items: center; gap: 4px; padding: 6px; border-radius: 12px; border: 2px solid transparent; transition: border-color 250ms var(--ease-out); }
+.baza.won-me { border-color: var(--signal); }
+.baza.won-foe { border-color: var(--lacre); }
+.baza.parda { border-color: var(--porcelain-dim); border-style: dashed; }
+.stack { display: flex; min-height: calc(var(--cw) * 1.5); }
+.stack .card + .card { margin-left: calc(var(--cw) * -0.6); }
+.stack .card { transition: none; }
+.stack .card.drop { animation: landing 360ms var(--ease-out) both; }
+@keyframes landing { from { transform: translateY(-46px) scale(1.18) rotate(-6deg); opacity: 0; } 60% { opacity: 1; } }
+.who {
+  position: absolute; top: 3px; left: 3px; z-index: 1; display: grid; place-items: center;
+  width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 800; line-height: 1;
+  box-shadow: 0 0 0 1px var(--wall);
+}
+.who.ally { background: var(--porcelain); color: var(--ink); }
+.who.foe { background: var(--lacre); color: #fff; }
+.baza .trick-label { margin: 0; }
+
+/* avisos y señas */
+.sign-feed { display: grid; gap: 6px; justify-items: center; min-height: 0; }
+.notice { margin: 0; padding: 6px 14px; border-radius: 99px; background: var(--porcelain); color: var(--ink); font-size: 14px; font-weight: 700; border: 2px solid var(--wall); animation: fade-up 260ms var(--ease-out) both; }
+.notice.sign { background: var(--signal); }
+.menu .menu-item { min-height: 48px; }
+.signs-btn + .menu { display: grid; grid-template-columns: 1fr 1fr; max-height: 60vh; overflow: auto; }
+.menu-wrap:has(.signs-btn) .menu { min-width: min(320px, calc(100vw - 20px)); grid-template-columns: 1fr 1fr; max-height: 60vh; overflow: auto; }
+.menu-wrap:has(.signs-btn) .menu-name { font-family: var(--font); font-weight: 800; font-size: 14px; text-transform: none; letter-spacing: 0; }
+.actions > .menu-wrap:has(.signs-btn) { order: 0; flex: 0 0 auto; align-self: center; }
+
+@media (max-width: 420px) {
+  .plate-head h1 { font-size: 30px; }
+  .deck-link { padding: 0 12px; font-size: 14px; }
+  .tools { gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .stack .card.drop { animation: none; } }
+.tricks.n2 .stack { min-width: calc(var(--cw-trick) * 1.4); }
+.tricks.n3 .stack { min-width: calc(var(--cw-trick) * 1.8); }
+.tricks.n4 .stack { min-width: calc(var(--cw-trick) * 2.2); }
+.baza .trick-label { grid-area: auto; }
+/* El mano del trio tiene 4 cartas antes de descartar: entran en una linea. */
+.seat-you .hand.four { --cw: clamp(40px, 20cqw, 96px); gap: 4px; }
+
+/* Cartas mas grandes y el resultado de cada baza escrito: se ve de un vistazo quien va ganando. */
+.tricks.n2 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 4.6), 110px); }
+.tricks.n3 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 5.7), 110px); }
+.tricks.n4 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 7.3), 110px); }
+.baza { min-width: 0; text-align: center; }
+.baza.won-me { border-width: 3px; background: rgba(230, 184, 60, 0.12); }
+.baza.won-foe { border-width: 3px; background: rgba(200, 38, 31, 0.16); }
+.trick-result { max-width: calc(var(--cw-trick) * 2.4); font-size: 13px; font-weight: 800; line-height: 1.15; color: var(--porcelain); overflow-wrap: anywhere; }
+.baza.won-me .trick-result { color: var(--signal); }
+.baza.won-foe .trick-result { color: #ff9d96; }
+.baza.parda .trick-result { color: var(--porcelain-dim); }
+
+/* Carta jugada en grande */
+.stack .card.peekable { cursor: zoom-in; }
+.peek {
+  position: fixed; z-index: 60; display: grid; gap: 2px; padding: 8px; justify-items: center; text-align: center;
+  background: var(--porcelain); color: var(--ink); border-radius: 14px; border: 2px solid var(--wall);
+  box-shadow: 4px 4px 0 var(--wall), 0 16px 32px rgba(0, 0, 0, 0.5); pointer-events: none;
+}
+.peek[hidden] { display: none; }
+.peek img { display: block; width: 100%; height: auto; border-radius: 8px; }
+.peek strong { font-family: var(--display); font-weight: 400; font-size: 16px; margin-top: 4px; }
+.peek span { font-size: 13px; font-weight: 700; color: #4a4d58; }
+
+/* En la mesa no hay encabezado: mas lugar para jugar. */
+.plate.in-game { padding-top: 16px; }
+.plate.in-game .plate-head { display: none; }
+.dock { display: flex; align-items: flex-end; gap: 8px; }
+.dock .actions { flex: 1; min-width: 0; }
+.dock .sound-toggle { flex: none; }
+.exit-panel { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center; }
+.exit-panel .text-link { color: var(--ink); }
+
+/* La mano cabe dentro de su recuadro: el resplandor del turno rodea las cartas levantadas y torcidas. */
+.seat-you { padding: 10px 0 12px; }
+.seat-you::before { inset: 0 -10px 0; }
+.seat-you .hand { padding-inline: 4px; }
+
+/* Escritorio: mas ancho para que ni la mesa ni la planilla queden chicas. */
+.plan-col .tally svg { max-width: 92px; margin-inline: auto; display: block; }
+.table-main { --cw-hand: clamp(54px, 27cqw, 132px); --cw-bot: clamp(28px, 13cqw, 66px); }
+/* En escritorio la planilla sale del tablero y va en la columna de la derecha. */
+.side > .planilla { align-self: start; }
+}
+@media (min-width: 960px) { .plan-col .tally svg { max-width: 130px; } }
+
+/* Escritorio ancho: la mesa aprovecha el espacio y las cartas crecen con ella. */
+@media (min-width: 960px) {
+  .sala:not(:has(.side[hidden])) { grid-template-columns: minmax(0, min(64vw, 1000px)) minmax(0, 380px); }
+  .table-main { --cw-hand: clamp(54px, 24cqw, 170px); --cw-bot: clamp(28px, 12cqw, 84px); }
+  .rivals.n3 { --cw-bot: clamp(24px, 9cqw, 72px); }
+  .tricks.n2 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 4.6), 150px); }
+  .tricks.n3 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 5.7), 150px); }
+  .tricks.n4 { --cw-trick: clamp(28px, calc((100cqw - 70px) / 7.3), 130px); }
+  .plan-col .tally svg { max-width: 150px; }
+  .trick-result { font-size: 15px; }
+}
+
+/* Quien tiro cada carta se ve por el color del borde: vos marfil, tu compañero azul, los rivales rojo. */
+:root { --role-me: #f7f1e3; --role-ally: #5b9cf2; --role-foe: #e0443b; }
+.stack .card.role-me { outline: 3px solid var(--role-me); outline-offset: -1px; }
+.stack .card.role-ally { outline: 3px solid var(--role-ally); outline-offset: -1px; }
+.stack .card.role-foe { outline: 3px solid var(--role-foe); outline-offset: -1px; }
+.who { width: 18px; height: 18px; font-size: 11px; }
+.who.me { background: var(--role-me); color: var(--ink); }
+.who.ally { background: var(--role-ally); color: #0b0c0f; }
+.who.foe { background: var(--role-foe); color: #fff; }
+.rival.ally { border-color: var(--role-ally); }
+.rival.ally .tag { border-color: var(--role-ally); color: var(--role-ally); }
+.baza-legend { display: flex; justify-content: center; gap: 12px; font-size: 12px; font-weight: 700; color: var(--porcelain-dim); }
+.baza-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; vertical-align: -1px; }
+
+/* La carta que va ganando la baza en juego: etiqueta "Gana" y borde que late. */
+.stack .card.leading { z-index: 2; animation: lead-pulse 1.4s ease-in-out infinite; }
+.stack .card.leading::after {
+  content: attr(data-lead); position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); z-index: 3;
+  padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--lead, var(--porcelain)); color: var(--ink); box-shadow: 0 1px 0 var(--wall);
+}
+.stack .card.role-me.leading { --lead: var(--role-me); }
+.stack .card.role-ally.leading { --lead: var(--role-ally); }
+.stack .card.role-foe.leading { --lead: var(--role-foe); color: #fff; }
+.stack .card.role-foe.leading::after { color: #fff; }
+@keyframes lead-pulse { 50% { filter: drop-shadow(0 0 0 transparent) brightness(1.12); } }
+.baza.live { border-style: dotted; border-color: var(--porcelain-dim); }
+.trick-result.lead-me { color: var(--role-me); }
+.trick-result.lead-ally { color: var(--role-ally); }
+.trick-result.lead-foe { color: #ff9d96; }
+@media (prefers-reduced-motion: reduce) { .stack .card.leading { animation: none; } }
+.baza .trick-label { margin-top: 8px; }

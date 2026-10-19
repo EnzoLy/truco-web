@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Truco con amigos</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23c8261f%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-size=%2722%27 text-anchor=%27middle%27 fill=%27%23f7f1e3%27 font-family=%27Georgia,serif%27 font-weight=%27900%27%3ET%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=DM+Sans:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="css/mesa.css">
+<link rel="stylesheet" href="css/sala.css">
+<link rel="stylesheet" href="css/vida.css">
+</head>
+<body>
+<div class="wall sala">
+  <main class="plate table" aria-label="Sala de truco">
+    <header class="plate-head">
+      <h1>Truco</h1>
+      <div class="tools">
+        <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="true" aria-label="Sonido activado">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="spk" d="M4 9v6h4l5 4V5L8 9H4z"/>
+            <path class="wave" d="M16.5 9.2a4 4 0 0 1 0 5.6M19 6.7a7.5 7.5 0 0 1 0 10.6"/>
+            <path class="cross" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/>
+          </svg>
+        </button>
+        <a class="deck-link" href="/">Con el bot</a>
+      </div>
+    </header>
+
+    <section class="screen" id="screen-home" hidden>
+      <h2 class="screen-title">Jugá con amigos</h2>
+      <p class="screen-sub">Creá una sala y pasá el link. Quien lo abra entra a tu mesa. Los lugares libres los ocupan bots.</p>
+      <label class="field"><span>Tu nombre</span><input id="name-home" type="text" maxlength="14" autocomplete="nickname" placeholder="Cómo te llaman"></label>
+      <fieldset class="modes">
+        <legend>Modo de juego</legend>
+        <label class="mode"><input type="radio" name="mode" value="duel" checked><span class="mode-name">1 vs 1</span><span class="mode-desc">Duelo clásico, dos jugadores.</span></label>
+        <label class="mode"><input type="radio" name="mode" value="trio"><span class="mode-name">3 jugadores</span><span class="mode-desc">El mano recibe 4 cartas, descarta una y juega solo contra los otros dos.</span></label>
+        <label class="mode"><input type="radio" name="mode" value="dupla"><span class="mode-name">2 vs 2</span><span class="mode-desc">Parejas. Cada uno ve solo sus cartas y se pueden hacer señas.</span></label>
+      </fieldset>
+      <p class="form-error" id="error-home" role="alert" hidden></p>
+      <button class="btn hot" id="create" type="button">Crear sala</button>
+    </section>
+
+    <section class="screen" id="screen-join" hidden>
+      <h2 class="screen-title">Te invitaron a una mesa</h2>
+      <p class="screen-sub" id="join-sub"></p>
+      <label class="field"><span>Tu nombre</span><input id="name-join" type="text" maxlength="14" autocomplete="nickname" placeholder="Cómo te llaman"></label>
+      <p class="form-error" id="error-join" role="alert" hidden></p>
+      <button class="btn hot" id="join" type="button">Entrar a la sala</button>
+      <a class="text-link" href="sala">Crear mi propia sala</a>
+    </section>
+
+    <section class="screen" id="screen-lobby" hidden>
+      <div class="invite">
+        <span class="invite-label">Código de la sala</span>
+        <strong class="invite-code" id="lobby-code"></strong>
+        <button class="btn cool" id="copy-link" type="button">Copiar link</button>
+      </div>
+      <div class="mode-pick" id="mode-pick" hidden></div>
+      <ul class="seat-list" id="seat-list" aria-label="Lugares de la mesa"></ul>
+      <p class="screen-sub" id="lobby-hint"></p>
+      <p class="form-error" id="error-lobby" role="alert" hidden></p>
+      <button class="btn hot" id="start" type="button" hidden>Empezar partida</button>
+    </section>
+
+    <section class="screen-table" id="screen-table" hidden>
+      <div class="table-main">
+        <div class="rivals" id="rivals"></div>
+        <div class="center">
+          <div class="dust" id="dust" aria-hidden="true"></div>
+          <div class="tricks" id="tricks"></div>
+            <div class="baza-legend" id="baza-legend" aria-hidden="true"></div>
+          <div class="status" id="status" aria-live="polite"></div>
+          <div class="sign-feed" id="sign-feed" aria-live="polite"></div>
+        </div>
+        <div class="seat seat-you" id="seat-you">
+          <div class="bubble" id="you-bubble" role="status"></div>
+          <div class="seat-head" id="you-head">Vos <span class="chip" id="you-mano" hidden>Mano</span></div>
+          <div class="hint" id="envido-hint"></div>
+          <div class="hand" id="you-hand" aria-label="Tus cartas"></div>
+        </div>
+        <div class="dock"><div class="actions" id="actions"></div></div>
+      </div>
+      <section class="board planilla" id="board" aria-label="Marcador"></section>
+    </section>
+  </main>
+
+  <aside class="side" id="side" hidden>
+    <nav class="panel exit-panel" aria-label="Salir"><a class="text-link" href="/">Jugar contra el bot</a><a class="text-link" href="sala">Salir de la sala</a></nav>
+    <details class="panel">
+      <summary>Historial de la partida</summary>
+      <ul class="log" id="log"></ul>
+    </details>
+  </aside>
+</div>
+
+<div class="shout" id="shout" aria-hidden="true"><div class="shout-text" id="shout-text"></div></div>
+
+<div class="handend" id="handend" aria-hidden="true">
+  <div class="handend-card">
+    <span class="handend-title" id="handend-title"></span>
+    <strong class="handend-points" id="handend-points"></strong>
+    <span class="handend-why" id="handend-why"></span>
+  </div>
+</div>
+
+<div class="overlay" id="end" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="end-title">
+    <h2 id="end-title"></h2>
+    <p id="end-text"></p>
+    <button class="btn primary" id="again" type="button" hidden>Jugar otra partida</button>
+    <p class="hint" id="end-wait" hidden>Esperando que el anfitrión elija.</p>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/emblems.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/sala-text.js"></script>
+<script src="js/sala.js"></script>
+</body>
+</html>

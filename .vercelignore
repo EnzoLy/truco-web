@@ -1,0 +1,7 @@
+.env
+.env.*
+serve.log
+PRODUCT.md
+.impeccable
+test
+supabase

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Elegí tus cartas — Truco</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Jost:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d0705;
+    --panel: #170d08;
+    --gold: #d8b46c;
+    --gold-hi: #f3dca0;
+    --gold-deep: #96743a;
+    --text: #f1e6d0;
+    --dim: #b9a68a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 22px 14px 48px;
+    background: radial-gradient(ellipse 110% 45% at 50% 0%, #3d2214 0%, transparent 65%), var(--bg);
+    color: var(--text);
+    font: 17px/1.4 'Jost', system-ui, sans-serif;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 18px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px; }
+  h1 {
+    margin: 0;
+    font: 700 clamp(34px, 6vw, 52px)/1 'Cormorant Garamond', Georgia, serif;
+    color: var(--gold-hi);
+    letter-spacing: .04em;
+  }
+  .back-link {
+    color: var(--gold-hi);
+    text-decoration: none;
+    font: 600 16px 'Jost', sans-serif;
+    padding: 7px 14px;
+    border: 1px solid var(--gold-deep);
+    border-radius: 99px;
+    background: #24140c;
+  }
+  .back-link:hover { border-color: var(--gold-hi); }
+  p { margin: 0; color: var(--dim); }
+  section {
+    padding: 16px;
+    border: 1px solid var(--gold-deep);
+    border-radius: 16px;
+    background: var(--panel);
+    box-shadow: inset 0 0 0 3px var(--panel), inset 0 0 0 4px rgba(216, 180, 108, .25), 0 12px 26px rgba(0, 0, 0, .5);
+  }
+  h2 { margin: 0 0 4px; font: 700 28px/1.1 'Cormorant Garamond', Georgia, serif; color: var(--gold-hi); }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .row img, .deck-grid img {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .65));
+    transition: transform 200ms cubic-bezier(.23, 1, .32, 1);
+  }
+  .row img:hover, .deck-grid img:hover { transform: translateY(-6px) scale(1.04); }
+  button {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid var(--gold-deep);
+    border-radius: 12px;
+    background: linear-gradient(var(--gold-hi), #c39a4e);
+    color: #1d1009;
+    font: 700 21px 'Cormorant Garamond', Georgia, serif;
+    cursor: pointer;
+    transition: transform 140ms ease, border-color 160ms ease;
+  }
+  button:active { transform: scale(.98); }
+  .frames { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .frames button { min-height: 44px; font-size: 19px; background: #2a1810; color: var(--gold-hi); }
+  .frames button[aria-pressed="true"] { background: linear-gradient(var(--gold-hi), #c39a4e); color: #1d1009; }
+  .deck-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+</style>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Elegí tus cartas</h1>
+      <p>Baraja española ilustrada a mano en SVG con pintas tradicionales, relieves y figuras de cada palo.</p>
+    </div>
+    <a class="back-link" href="/">← Volver a la mesa</a>
+  </header>
+
+  <section>
+    <h2>Marco y papel del naipe</h2>
+    <p>Se combina con cualquier estilo de ilustración.</p>
+    <div class="frames" id="frames"></div>
+  </section>
+
+  <div id="list"></div>
+
+  <section>
+    <h2>Mazo completo (40 cartas y dorso)</h2>
+    <p>Vista detallada del estilo seleccionado con los cuatro palos: Oros, Copas, Espadas y Bastos.</p>
+    <div class="deck-grid" id="full-deck"></div>
+  </section>
+</div>
+<script src="js/emblems.js"></script>
+<script src="js/cards.js"></script>
+<script>
+  const ARTS = {
+    tradicional: ['Criolla Clásica', 'Los iconos de Yelmo (10), Corcel (11) y Corona (12) en medallón heráldico, con palos facetados a juego.'],
+    emblema: ['Criolla Reversible (Dos Cabezas)', 'Los mismos iconos de Yelmo (10), Corcel (11) y Corona (12) en simetría de espejo arriba y abajo.'],
+    linea: ['Criolla Oro Imperial', 'Los mismos iconos heráldicos bañados en oro bruñido y plata sobre escudo oscuro.'],
+  };
+  const FRAMES = { clasica: 'Clásica (Pergamino)', marfil: 'Marfil Imperial', ebano: 'Ébano Nocturno' };
+  const SAMPLES = [
+    { num: 1, suit: 'espada' },
+    { num: 1, suit: 'basto' },
+    { num: 7, suit: 'oro' },
+    { num: 10, suit: 'copa' },
+    { num: 11, suit: 'espada' },
+    { num: 12, suit: 'oro' },
+  ];
+  const KEY_ART = 'truco-dibujo';
+  const KEY_FRAME = 'truco-cartas';
+  const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+  const write = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } };
+  const uri = (svg) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+
+  const list = document.getElementById('list');
+  const fullDeck = document.getElementById('full-deck');
+  let frame = read(KEY_FRAME, 'clasica');
+  let currentArt = read(KEY_ART, 'tradicional');
+
+  function renderFullDeck() {
+    fullDeck.replaceChildren();
+    const suits = ['espada', 'basto', 'oro', 'copa'];
+    suits.forEach((suit) => {
+      CardArt.NUMBERS.forEach((num) => {
+        const img = document.createElement('img');
+        img.alt = num + ' de ' + suit;
+        img.title = num + ' de ' + suit;
+        img.src = uri(CardArt.faceSvg({ num, suit }, frame, currentArt));
+        fullDeck.append(img);
+      });
+    });
+    const back = document.createElement('img');
+    back.alt = 'Dorso del naipe';
+    back.title = 'Dorso del naipe';
+    back.src = uri(CardArt.backSvg());
+    fullDeck.append(back);
+  }
+
+  function renderList() {
+    list.replaceChildren();
+    CardArt.ART_NAMES.forEach((name) => {
+      const box = document.createElement('section');
+      const h = document.createElement('h2'); h.textContent = ARTS[name][0];
+      const d = document.createElement('p'); d.textContent = ARTS[name][1];
+      const row = document.createElement('div'); row.className = 'row';
+      SAMPLES.forEach((c) => {
+        const img = document.createElement('img');
+        img.alt = c.num + ' de ' + c.suit;
+        img.src = uri(CardArt.faceSvg(c, frame, name));
+        row.append(img);
+      });
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = name === currentArt ? 'Usar este dibujo (actual)' : 'Usar este dibujo';
+      btn.addEventListener('click', () => {
+        currentArt = name;
+        write(KEY_ART, name); write(KEY_FRAME, frame);
+        location.href = '/?dibujo=' + name + '&cartas=' + frame;
+      });
+      box.append(h, d, row, btn);
+      list.append(box);
+    });
+    renderFullDeck();
+  }
+
+  const frames = document.getElementById('frames');
+  CardArt.SKIN_NAMES.forEach((name) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = FRAMES[name];
+    b.setAttribute('aria-pressed', String(name === frame));
+    b.addEventListener('click', () => {
+      frame = name;
+      write(KEY_FRAME, frame);
+      frames.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      renderList();
+    });
+    frames.append(b);
+  });
+  renderList();
+</script>
+</html>
