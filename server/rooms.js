@@ -28,6 +28,7 @@ const BOT_DELAY_SPREAD_MS = 700;
 const ROOM_IDLE_MS = 2 * 60 * 60 * 1000;
 const PRESENCE_MS = 8000; // visto hace menos que esto = conectado
 const PRESENCE_TOUCH_MS = 3000; // cada cuanto un poll refresca su "visto"
+const ABANDON_MS = 5 * 60 * 1000; // un humano sin consultar el estado por tanto tiempo abandona la partida
 const MAX_ADVANCE_STEPS = 30; // pasos automaticos por pedido
 const STALE_DUE_MS = 30_000; // un paso vencido hace mas que esto se reprograma a "ahora"
 const MAX_SAVE_ATTEMPTS = 4;
@@ -87,6 +88,23 @@ function newCode() {
   let code = '';
   for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
   return code;
+}
+
+/** Quienes ganan por abandono, o null si no corresponde. Pierde el equipo de quien se fue (en dupla la pareja,
+ * si no cada asiento solo); gana el que menos ausentes tiene. No hay abandono si empatan (se fueron todos por
+ * igual) ni si el unico que quedaria ganando son bots: nadie a quien dar la victoria. */
+function abandonment(room, t) {
+  if (room.status !== 'playing' || !room.state) return null;
+  const gone = room.seats.map((s, seat) => (s.kind === 'human' && t - s.lastSeen > ABANDON_MS ? seat : -1)).filter((seat) => seat >= 0);
+  if (!gone.length) return null;
+  const groups = room.mode === 'dupla' ? [[0, 2], [1, 3]] : room.seats.map((_, seat) => [seat]);
+  const missing = groups.map((g) => g.filter((seat) => gone.includes(seat)).length);
+  const fewest = Math.min(...missing);
+  const standing = groups.filter((_, i) => missing[i] === fewest);
+  if (standing.length === groups.length) return null;
+  const winners = standing.flat();
+  const online = winners.filter((seat) => room.seats[seat].kind === 'human' && !gone.includes(seat));
+  return online.length ? { winners, gone, host: online[0] } : null;
 }
 
 function seatOf(room, token) {
@@ -166,6 +184,16 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
 
   /** Aplica los pasos vencidos en orden; cada uno programa el siguiente desde su propia hora. */
   function advance(room, t) {
+    const abandoned = abandonment(room, t);
+    if (abandoned) {
+      const { state, events } = Room.forfeit(room.state, abandoned.winners, abandoned.gone);
+      room.state = state;
+      record(room, events);
+      room.status = 'ended';
+      room.due = null;
+      if (abandoned.gone.includes(room.host)) room.host = abandoned.host;
+      return true;
+    }
     if (room.due && t - room.due.at > STALE_DUE_MS) room.due.at = t;
     let steps = 0;
     while (room.due && room.due.at <= t && steps < MAX_ADVANCE_STEPS) {
@@ -402,4 +430,4 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
   return { create, join, info, configure, sit, setSeat, start, rematch, act, sign, snapshot, watch, sweep, size: () => store.count() };
 }
 
-module.exports = { createRoomManager, RoomError, SIGNS, HAND_PAUSE_MS, BOT_DELAY_MIN_MS, BOT_DELAY_SPREAD_MS, PRESENCE_MS };
+module.exports = { createRoomManager, RoomError, SIGNS, HAND_PAUSE_MS, ABANDON_MS, BOT_DELAY_MIN_MS, BOT_DELAY_SPREAD_MS, PRESENCE_MS };

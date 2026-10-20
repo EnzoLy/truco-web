@@ -136,3 +136,18 @@ test('quien mira lee quien juega, quien canto y quien gano sin hablarle de vos',
   assert.equal(T.teamName(view, seats, 1), 'Beto y Dani');
   assert.equal(T.statusText({ ...view, phase: 'discard', mano: 0 }, seats, null), 'Ana está eligiendo qué carta descartar.');
 });
+
+test('el cierre por abandono dice quien se desconecto', () => {
+  const names = seatsOf('Ana', 'Beto', 'Caro', 'Dani');
+  const base = { me: 0, mode: 'dupla', n: 4, winners: [1, 3], forfeit: [0] };
+  assert.deepEqual(T.endText(base, names), { title: 'Perdiste la partida', text: 'Te desconectaste por más de 5 minutos. Ganó Beto y Dani.' });
+  const partner = T.endText({ ...base, me: 2 }, names);
+  assert.equal(partner.title, 'Perdiste la partida');
+  assert.equal(partner.text, 'Ana se desconectó por más de 5 minutos. Ganó Beto y Dani.');
+  assert.equal(T.endText({ ...base, me: 1, winners: [1, 3], forfeit: [0, 2] }, names).text, 'Ana y Caro se desconectaron por más de 5 minutos. Ganó Vos y Dani.');
+  assert.equal(T.endText({ ...base, me: 1 }, names).title, '¡Ganaste la partida!');
+  assert.equal(T.endText({ ...base, spectator: true }, names).text, 'Ana se desconectó por más de 5 minutos. Ganó Beto y Dani.');
+  assert.equal(T.logText({ type: 'game-end', forfeit: [0, 2], winners: [1, 3] }, names, 1), 'Ana y Caro abandonaron la partida');
+  assert.equal(T.logText({ type: 'game-end', forfeit: [0], winners: [1] }, names, 1), 'Ana abandonó la partida');
+  assert.equal(T.logText({ type: 'game-end', winners: [1] }, names, 1), null);
+});

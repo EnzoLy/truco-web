@@ -63,6 +63,7 @@
           ? `Flor: ${ev.points.map((p, seat) => (p === null ? null : `${who(seat)} ${p}`)).filter(Boolean).join(', ')}. +${ev.awarded}`
           : `Flor no querida: +${ev.awarded}`;
       case 'hand-end': return `Mano terminada: +${ev.points}`;
+      case 'game-end': return ev.forfeit ? `${list(ev.forfeit.map(who))} ${ev.forfeit.length > 1 ? 'abandonaron' : 'abandonó'} la partida` : null;
       case 'envido-first': return `${who(ev.by)}: envido primero`;
       default: {
         const text = eventText(ev);
@@ -162,10 +163,14 @@
 
   function endText(view, seats) {
     const winners = view.winners || [];
-    if (view.spectator) return { title: 'Terminó la partida', text: `Ganó ${list(winners.map((seat) => nameOf(seats, seat, -1)))}.` };
-    const names = list(winners.map((seat) => nameOf(seats, seat, view.me)));
+    const me = viewerOf(view);
+    const names = list(winners.map((seat) => nameOf(seats, seat, me)));
+    const left = view.forfeit || [];
+    const absent = list(left.map((seat) => nameOf(seats, seat, me)));
+    const why = !left.length ? '' : left.includes(me) ? 'Te desconectaste por más de 5 minutos. ' : `${absent} ${left.length > 1 ? 'se desconectaron' : 'se desconectó'} por más de 5 minutos. `;
+    if (view.spectator) return { title: 'Terminó la partida', text: `${why}Ganó ${names}.` };
     const iWon = winners.includes(view.me) || (view.mode === 'dupla' && winners.includes((view.me + 2) % view.n));
-    return { title: iWon ? '¡Ganaste la partida!' : 'Perdiste la partida', text: `Ganó ${names}.` };
+    return { title: iWon ? '¡Ganaste la partida!' : 'Perdiste la partida', text: `${why}Ganó ${names}.` };
   }
 
   return { TRUCO_NAMES, ENVIDO_NAMES, FLOR_NAMES, MODE_LABELS, nameOf, list, eventText, shoutKind, speakerOf, logText, viewerOf, scoreRows, teamName, statusText, endText };

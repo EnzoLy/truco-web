@@ -455,3 +455,110 @@ test('API HTTP: /watch no pide token y muestra el estado', async () => {
     server.close();
   }
 });
+
+// ---------- abandono ----------
+
+const MINUTE = 60 * 1000;
+
+/** Pasa el tiempo minuto a minuto mientras solo los `present` consultan el estado. */
+async function pass(manager, advance, code, present, minutes) {
+  for (let i = 0; i < minutes; i++) {
+    advance(MINUTE);
+    for (const token of present) await manager.snapshot(code, token);
+  }
+}
+
+test('abandono: si un jugador falta mas de 5 minutos, gana el que sigue conectado', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'duel', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  await manager.start(a.code, a.token);
+  await pass(manager, advance, a.code, [b.token], 4);
+  assert.equal((await manager.snapshot(a.code, b.token)).status, 'playing', 'a los 4 minutos todavia no');
+  advance(MINUTE + 1000);
+  const snap = await manager.snapshot(a.code, b.token);
+  assert.equal(snap.status, 'ended');
+  assert.deepEqual(snap.view.winners, [1]);
+  assert.deepEqual(snap.view.forfeit, [0]);
+  assert.deepEqual(snap.view.legal, []);
+  assert.ok(snap.events.some((e) => e.type === 'game-end' && e.forfeit[0] === 0));
+  await throwsStatus(manager.act(a.code, b.token, { type: 'mazo' }), 409);
+});
+
+test('abandono: el que se fue ve que perdio cuando vuelve, y el anfitrion pasa a quien sigue', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'duel', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  await manager.start(a.code, a.token);
+  await pass(manager, advance, a.code, [b.token], 6);
+  const back = await manager.snapshot(a.code, a.token);
+  assert.equal(back.status, 'ended');
+  assert.deepEqual(back.view.forfeit, [0]);
+  assert.equal(back.host, 1, 'el anfitrion que se fue cede el cargo');
+  await manager.rematch(a.code, b.token);
+  assert.equal((await manager.snapshot(a.code, b.token)).status, 'lobby');
+});
+
+test('abandono: en 2 vs 2 pierde la pareja del que se fue', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'dupla', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  const c = await manager.join(a.code, 'C');
+  const d = await manager.join(a.code, 'D');
+  await manager.start(a.code, a.token);
+  await pass(manager, advance, a.code, [a.token, c.token, d.token], 6); // se fue B (asiento 1)
+  const snap = await manager.snapshot(a.code, a.token);
+  assert.equal(snap.status, 'ended');
+  assert.deepEqual([...snap.view.winners].sort(), [0, 2]);
+  assert.deepEqual(snap.view.forfeit, [1]);
+  assert.equal(b.seat, 1);
+});
+
+test('abandono: en trio ganan los otros dos', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'trio', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  const c = await manager.join(a.code, 'C');
+  await manager.start(a.code, a.token);
+  await pass(manager, advance, a.code, [a.token, b.token], 6); // se fue C
+  const snap = await manager.snapshot(a.code, a.token);
+  assert.deepEqual([...snap.view.winners].sort(), [0, 1]);
+  assert.deepEqual(snap.view.forfeit, [2]);
+  assert.equal(c.seat, 2);
+});
+
+test('abandono: sin ningun humano conectado a quien darle la victoria, la partida sigue', async () => {
+  const { manager, advance } = manualManager();
+  const solo = await manager.create({ mode: 'dupla', name: 'A' });
+  await manager.start(solo.code, solo.token);
+  advance(30 * MINUTE);
+  assert.equal((await manager.snapshot(solo.code, solo.token)).status, 'playing', 'solo contra bots: no pierde por irse');
+
+  const duo = await manager.create({ mode: 'duel', name: 'A' });
+  await manager.join(duo.code, 'B');
+  await manager.start(duo.code, duo.token);
+  advance(30 * MINUTE); // los dos se fueron por igual: nadie gana
+  assert.equal((await manager.watch(duo.code)).status, 'playing');
+});
+
+test('abandono: quien vuelve a tiempo sigue jugando y el reloj se reinicia', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'duel', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  await manager.start(a.code, a.token);
+  await pass(manager, advance, a.code, [b.token], 4);
+  await manager.snapshot(a.code, a.token); // A vuelve a los 4 minutos
+  await pass(manager, advance, a.code, [b.token], 4); // A calla otros 4: en total 8, pero solo 4 desde que volvio
+  assert.equal((await manager.snapshot(a.code, b.token)).status, 'playing');
+});
+
+test('abandono: tambien lo detecta quien mira', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'duel', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  await manager.start(a.code, a.token);
+  await pass(manager, advance, a.code, [b.token], 6);
+  const watch = await manager.watch(a.code);
+  assert.equal(watch.status, 'ended');
+  assert.deepEqual(watch.view.forfeit, [0]);
+});

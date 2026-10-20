@@ -424,6 +424,17 @@
     return { state: s, events: ev };
   }
 
+  /** Abandono: la partida termina donde esté y ganan los asientos `winners`; `leavers` son quienes se fueron. */
+  function forfeit(prev, winners, leavers) {
+    const s = clone(prev);
+    s.phase = 'game-over';
+    s.pending = null;
+    s.suspended = null;
+    s.winners = [...winners];
+    s.forfeit = [...leavers];
+    return { state: s, events: [{ type: 'game-end', winners: [...winners], teams: s.teams ? [...s.teams] : null, forfeit: [...leavers] }] };
+  }
+
   /** Vista de un asiento: solo lo que puede saber. Las cartas ajenas se reducen a su cantidad.
    * Con { team: true } (solo bots) incluye las cartas de los companeros. */
   function viewFor(s, p, { team = false } = {}) {
@@ -460,6 +471,7 @@
       handResult: s.handResult ? clone(s.handResult) : null,
       legal: hasHand ? legalActions(s, p) : [],
       winners: s.winners ? [...s.winners] : null,
+      forfeit: s.forfeit ? [...s.forfeit] : null,
       // Solo para los bots: los companeros de equipo se ven las cartas entre si. Nunca se envia a los humanos.
       partners: team && hasHand
         ? s.teams.map((t, seat) => (t === s.teams[p] && seat !== p ? { seat, hand: clone(s.hands[seat]), dealt: clone(s.dealt[seat]) } : null)).filter(Boolean)
@@ -467,5 +479,5 @@
     };
   }
 
-  return { MODES, seatCount, teamsFor, newGame, dealHand, step, legalActions, viewFor, canCallTruco, canCallEnvido, canCallFlor, canAskFlor, hasFlor, florPoints, opposingSeats };
+  return { MODES, seatCount, teamsFor, newGame, dealHand, step, forfeit, legalActions, viewFor, canCallTruco, canCallEnvido, canCallFlor, canAskFlor, hasFlor, florPoints, opposingSeats };
 });
