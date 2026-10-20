@@ -261,3 +261,13 @@ test('simulacion: miles de partidas con jugadores aleatorios terminan sin errore
     assert.ok(state.scores[state.winner] >= 30);
   }
 });
+
+test('el que ya tiro su carta no puede contestar el truco con envido primero', () => {
+  let s = rig([[c(7, 'oro'), c(6, 'oro'), c(1, 'copa')], [c(5, 'oro'), c(6, 'copa'), c(4, 'basto')]]);
+  s = run(s, 0, { type: 'play', index: 0 }).state;
+  s = run(s, 1, { type: 'truco' }).state;
+  assert.equal(s.phase, 'respond-truco');
+  assert.equal(s.turn, 0);
+  assert.ok(!T.legalActions(s, 0).some((a) => a.type === 'envido'));
+  assert.throws(() => run(s, 0, { type: 'envido', what: 'envido' }), /ilegal/);
+});

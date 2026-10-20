@@ -161,7 +161,8 @@
       if (!s.pending.responders.includes(p)) return [];
       out.push({ type: 'accept' }, { type: 'reject' });
       if (s.pending.level < MAX_TRUCO_LEVEL) out.push({ type: 'truco' });
-      if (s.results.length === 0 && !s.envido.done && s.trucoLevel === 0 && !hasFlor(s, p)) {
+      // envido primero: solo si todavía no tiraste tu carta de la primera baza
+      if (s.results.length === 0 && !s.envido.done && s.trucoLevel === 0 && s.cur.cards[p] === null && !hasFlor(s, p)) {
         ENVIDO_OPENERS.forEach((what) => out.push({ type: 'envido', what }));
       }
       if (canCallFlor(s, p)) out.push({ type: 'flor', what: 'flor' });

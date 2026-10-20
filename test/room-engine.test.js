@@ -307,3 +307,22 @@ test('los bots ya no rechazan casi todos los trucos', () => {
   assert.ok(accepted / total > 0.45, `solo aceptan ${(100 * accepted) / total}%`);
   assert.ok(accepted / total < 0.9, 'tampoco aceptan siempre');
 });
+
+test('el que ya tiro su carta no puede contestar el truco con envido primero', () => {
+  const hands = [
+    [card(7, 'oro'), card(6, 'oro'), card(1, 'copa')],
+    [card(5, 'oro'), card(6, 'copa'), card(4, 'basto')],
+    [card(3, 'espada'), card(2, 'basto'), card(12, 'copa')],
+    [card(11, 'oro'), card(10, 'basto'), card(4, 'copa')],
+  ];
+  let s = setup('dupla', hands, 0);
+  s = Room.step(s, 0, { type: 'play', index: 0 }).state;
+  s = Room.step(s, 1, { type: 'truco' }).state;
+  assert.equal(s.phase, 'respond-truco');
+  assert.ok(s.pending.responders.includes(0));
+  const seat0 = { ...s, turn: 0 };
+  assert.ok(!Room.legalActions(seat0, 0).some((a) => a.type === 'envido'));
+  // el compañero que todavía no tiró sí puede
+  const seat2 = { ...s, turn: 2 };
+  assert.ok(Room.legalActions(seat2, 2).some((a) => a.type === 'envido'));
+});

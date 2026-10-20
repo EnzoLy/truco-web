@@ -203,7 +203,8 @@
     } else if (s.phase === 'respond-truco') {
       out.push({ type: 'accept' }, { type: 'reject' });
       if (s.pending.level < MAX_TRUCO_LEVEL) out.push({ type: 'truco' });
-      if (s.results.length === 0 && !s.envido.done && s.trucoLevel === 0) {
+      // envido primero: solo si todavía no tiraste tu carta de la primera baza
+      if (s.results.length === 0 && !s.envido.done && s.trucoLevel === 0 && s.cur.cards[p] === null) {
         ENVIDO_OPENERS.forEach((what) => out.push({ type: 'envido', what }));
       }
     } else if (s.phase === 'respond-envido') {
