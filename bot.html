@@ -10,12 +10,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=DM+Sans:wght@500;700;800&display=swap">
 <link rel="stylesheet" href="css/mesa.css">
+<link rel="stylesheet" href="css/sala.css">
+<link rel="stylesheet" href="css/vida.css">
 </head>
 <body>
-<div class="wall">
+<div class="wall sala">
   <main class="plate table" aria-label="Mesa de truco">
-    <span class="chips" aria-hidden="true"></span>
-    <i class="rivet" aria-hidden="true"></i><i class="rivet" aria-hidden="true"></i><i class="rivet" aria-hidden="true"></i><i class="rivet" aria-hidden="true"></i>
 
     <header class="plate-head">
       <h1>Truco</h1>
@@ -33,31 +33,31 @@
       </div>
     </header>
 
-    <section class="board" aria-label="Marcador">
-      <div class="score-row you"><span class="score-name">Vos</span><div class="tally" id="tally-you"></div><span class="score-num" id="num-you">0</span></div>
-      <div class="score-row bot"><span class="score-name">Bot</span><div class="tally" id="tally-bot"></div><span class="score-num" id="num-bot">0</span></div>
-      <div class="score-legend"><div class="halves"><span>malas</span><span>buenas</span></div></div>
+    <section class="screen-table" id="screen-table">
+      <div class="table-main">
+        <div class="rivals n1" id="rivals">
+          <div class="rival" id="rival">
+            <div class="bubble" id="bot-bubble" role="status"></div>
+            <div class="rival-head"><span class="rival-name" id="bot-name">Bot</span> <span class="chip" id="bot-mano" hidden>Mano</span></div>
+            <div class="rival-hand" id="bot-hand" aria-label="Cartas del bot"></div>
+          </div>
+        </div>
+        <div class="center">
+          <div class="dust" id="dust" aria-hidden="true"></div>
+          <div class="tricks n2" id="tricks"></div>
+          <div class="baza-legend" id="baza-legend" aria-hidden="true"></div>
+          <div class="status" id="status" aria-live="polite"></div>
+        </div>
+        <div class="seat seat-you" id="seat-you">
+          <div class="bubble" id="you-bubble" role="status"></div>
+          <div class="seat-head">Vos <span class="chip" id="you-mano" hidden>Mano</span></div>
+          <div class="hint" id="envido-hint"></div>
+          <div class="hand" id="you-hand" aria-label="Tus cartas"></div>
+        </div>
+        <div class="dock"><div class="actions" id="actions"></div></div>
+      </div>
+      <section class="board planilla" id="board" aria-label="Marcador"></section>
     </section>
-
-    <div class="seat seat-bot">
-      <div class="seat-head">Bot <span class="chip" id="bot-mano" hidden>Mano</span></div>
-      <div class="hand" id="bot-hand" aria-label="Cartas del bot"></div>
-      <div class="bubble" id="bot-bubble" role="status"></div>
-    </div>
-
-    <div class="center">
-      <div class="tricks" id="tricks"></div>
-      <div class="status" id="status" aria-live="polite"></div>
-    </div>
-
-    <div class="seat seat-you" id="seat-you">
-      <div class="bubble" id="you-bubble" role="status"></div>
-      <div class="seat-head">Vos <span class="chip" id="you-mano" hidden>Mano</span></div>
-      <div class="hint" id="envido-hint"></div>
-      <div class="hand" id="you-hand" aria-label="Tus cartas"></div>
-    </div>
-
-    <div class="dock"><div class="actions" id="actions"></div></div>
   </main>
 
     <aside class="side">
@@ -88,6 +88,16 @@
     </aside>
 </div>
 
+<div class="shout" id="shout" aria-hidden="true"><div class="shout-text" id="shout-text"></div></div>
+
+<div class="handend" id="handend" aria-hidden="true">
+  <div class="handend-card">
+    <span class="handend-title" id="handend-title"></span>
+    <strong class="handend-points" id="handend-points"></strong>
+    <span class="handend-why" id="handend-why"></span>
+  </div>
+</div>
+
 <div class="overlay" id="end" hidden>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="end-title">
     <h2 id="end-title"></h2>
@@ -101,4 +111,5 @@
 <script src="js/cards.js"></script>
 <script src="js/bot.js"></script>
 <script src="js/sound.js"></script>
+<script src="js/table-fx.js"></script>
 <script src="js/ui.js" data-autostart></script>

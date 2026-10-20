@@ -26,7 +26,12 @@
   --cw-hand: clamp(68px, 21.5vw, 116px);
   --cw-table: clamp(52px, 15.5vw, 92px);
   --cw-bot: clamp(36px, 10vw, 62px);
-  --card-glow: 0 0 0.75px rgba(11, 12, 15, 0.9);
+  /* Sombras de carta como box-shadow sobre la imagen: se pintan una vez. Un filter drop-shadow se
+     recalcula en cada cuadro de cualquier animacion y en celulares satura la GPU. */
+  --card-edge: 0 0 0 0.75px rgba(11, 12, 15, 0.9);
+  --card-shadow: var(--card-edge), 0 5px 8px rgba(0, 0, 0, 0.5);
+  --card-shadow-lift: var(--card-edge), 0 12px 14px rgba(0, 0, 0, 0.5);
+  --card-shadow-high: var(--card-edge), 0 14px 16px rgba(0, 0, 0, 0.5);
   accent-color: var(--signal);
   caret-color: var(--signal);
   scrollbar-color: var(--enamel-hi) var(--wall);
@@ -231,7 +236,7 @@ a { text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
 .slot.won { z-index: 2; }
 .slot:nth-child(1) { transform: translate(-24%, -20%); }
 .slot:nth-child(2) { transform: translate(24%, 18%); }
-.slot .card { margin: -2px; transform: rotate(var(--tilt, 0deg)); transition: opacity 300ms var(--ease-out), filter 300ms var(--ease-out); }
+.slot .card { margin: -2px; transform: rotate(var(--tilt, 0deg)); transition: opacity 300ms var(--ease-out); }
 .slot .card.celebrate { animation: win 700ms var(--ease-out) 1; }
 .slot.won .card::after {
   content: ""; position: absolute; inset: -3px; border: 3px solid var(--signal); border-radius: calc(var(--cw) * 0.08); pointer-events: none;
@@ -239,7 +244,8 @@ a { text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
 }
 @keyframes winglow { 50% { box-shadow: 0 4px 0 var(--signal-deep); } }
 /* La baza perdida se anula, no desaparece. */
-.slot.lost .card { opacity: 0.5; filter: saturate(0.4) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5)); }
+.slot.lost .card { opacity: 0.5; filter: saturate(0.4); }
+.slot.lost .card img { box-shadow: var(--card-edge), 0 1px 2px rgba(0, 0, 0, 0.5); }
 @keyframes win { 0% { transform: rotate(var(--tilt, 0deg)) scale(1); } 35% { transform: rotate(0deg) scale(1.16); } 100% { transform: rotate(var(--tilt, 0deg)) scale(1); } }
 .slot .card.drop { will-change: transform; }
 .trick-label { grid-area: label; margin-top: calc(var(--cw) * 0.3); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--porcelain-dim); }
@@ -272,14 +278,15 @@ a { text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
   position: relative; display: block; flex: none; padding: 0; background: none;
   width: var(--cw); height: calc(var(--cw) * 1.5);
   border-radius: calc(var(--cw) * 0.07);
-  filter: drop-shadow(var(--card-glow)) drop-shadow(0 5px 8px rgba(0, 0, 0, 0.5));
-  transition: filter 220ms var(--ease-out);
 }
 .card::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: linear-gradient(135deg, rgba(255, 248, 224, 0.16) 0%, transparent 42%, rgba(0, 0, 0, 0.12) 100%);
 }
-.card img { display: block; width: 100%; height: 100%; border-radius: inherit; -webkit-user-drag: none; user-select: none; }
+.card img {
+  display: block; width: 100%; height: 100%; border-radius: inherit; -webkit-user-drag: none; user-select: none;
+  box-shadow: var(--card-shadow);
+}
 
 /* Tus cartas en abanico. La carta (el boton) no se mueve al tocarla: solo sube su imagen,
    asi la zona sensible al mouse queda fija y el borde no parpadea entre hover y no-hover. */
@@ -295,16 +302,16 @@ a { text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
 .seat-you .hand .card:not(:disabled):not(.selected)::before { animation: ready 2.6s ease-in-out infinite; animation-delay: calc(var(--i, 0) * 180ms); }
 @keyframes ready { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
 @media (hover: hover) and (pointer: fine) {
-  button.card:hover:not(:disabled) { --pop: translateY(-18px) rotate(calc(var(--rot, 0deg) * -1)) scale(1.06); z-index: 2; filter: drop-shadow(var(--card-glow)) drop-shadow(0 12px 14px rgba(0, 0, 0, 0.5)); }
+  button.card:hover:not(:disabled) { --pop: translateY(-18px) rotate(calc(var(--rot, 0deg) * -1)) scale(1.06); z-index: 2; }
+  button.card:hover:not(:disabled) img { box-shadow: var(--card-shadow-lift); }
   .seat-you .hand button.card:hover:not(:disabled) img, .seat-you .hand button.card:hover:not(:disabled)::before { animation: none; }
 }
 button.card:active:not(:disabled) { --pop: translateY(-8px) rotate(calc(var(--rot, 0deg) * -1)) scale(0.97); }
 button.card:disabled { cursor: default; }
 .seat-you .hand .card.selected {
   --pop: translateY(-26px) rotate(calc(var(--rot, 0deg) * -1)) scale(1.1); z-index: 3;
-  filter: drop-shadow(var(--card-glow)) drop-shadow(0 14px 16px rgba(0, 0, 0, 0.5));
 }
-.seat-you .hand .card.selected img { outline: 3px solid var(--signal); outline-offset: 3px; }
+.seat-you .hand .card.selected img { outline: 3px solid var(--signal); outline-offset: 3px; box-shadow: var(--card-shadow-high); }
 
 /* Reparto: las cartas vuelan desde el mazo, una tras otra. */
 .hand .card.deal { animation: deal 560ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 120ms); }
@@ -420,7 +427,7 @@ button.card:disabled { cursor: default; }
 .panel .btn { --face: var(--porcelain); --rim: var(--wall); --drop: var(--wall); --fg: var(--ink); flex: none; width: 100%; font-size: 17px; }
 
 /* ---------- fin de partida: otra chapa ---------- */
-.overlay { position: fixed; inset: 0; background: rgba(11, 12, 15, 0.8); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 20px; z-index: 30; animation: fade-in 240ms var(--ease-out) both; }
+.overlay { position: fixed; inset: 0; background: rgba(11, 12, 15, 0.86); display: grid; place-items: center; padding: 20px; z-index: 30; animation: fade-in 240ms var(--ease-out) both; }
 .overlay[hidden] { display: none; }
 @keyframes fade-in { from { opacity: 0; } }
 .dialog {

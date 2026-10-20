@@ -49,16 +49,16 @@
 .amulet-list li { padding-left: 10px; border-left: 4px solid var(--kc, var(--enamel)); font-size: 15px; }
 .panel .amulet-list li.kind-mejora { --kc: var(--enamel-hi); }
 .amulet-list li.empty { border-left-color: transparent; color: #4a4d58; padding-left: 0; }
-.rival-name { margin: 0; font-family: var(--display); font-size: 20px; color: var(--lacre); }
+.rival-title { margin: 0; font-family: var(--display); font-size: 20px; color: var(--lacre); }
 
 /* ---------- cartas mejoradas y espiadas ---------- */
-.card.upgraded img { box-shadow: 0 0 0 3px var(--signal), 0 0 14px rgba(230, 184, 60, 0.7); }
+.card.upgraded img { box-shadow: 0 0 0 3px var(--signal), 0 0 14px rgba(230, 184, 60, 0.7), var(--card-shadow); }
 .card.upgraded::after {
   content: "★"; position: absolute; top: -8px; right: -6px; display: grid; place-items: center;
   width: 22px; height: 22px; border-radius: 50%; background: var(--signal); color: var(--ink);
   font-size: 13px; line-height: 1; box-shadow: 1px 1px 0 var(--wall);
 }
-.seat-bot .card.peeked img { box-shadow: 0 0 0 2px var(--kind-info); }
+.rival-hand .card.peeked img { box-shadow: 0 0 0 2px var(--kind-info), var(--card-shadow); }
 
 /* ---------- carteles: intro, tienda, fin ---------- */
 .dialog .intro-round { font-size: 13px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--porcelain-dim); }

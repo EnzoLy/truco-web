@@ -53,6 +53,7 @@
     'pico-de-oro': { name: 'Pico de oro', desc: '+1 punto cada vez que ganás una mano con truco.', price: 6, kind: 'puntaje', mods: { trucoBonus: 1 } },
     cantor: { name: 'Cantor', desc: '+1 punto cada vez que ganás un envido.', price: 5, kind: 'puntaje', mods: { envidoBonus: 1 } },
     garganta: { name: 'Garganta de lata', desc: 'Sumás +2 al contar tu envido.', price: 6, kind: 'puntaje', mods: { envidoCountBonus: 2 } },
+    flor: { name: 'Flor', desc: 'Podés cantar flor (tres cartas del mismo palo): 3 puntos y se anula el envido. Sin este amuleto no hay flor.', price: 5, kind: 'puntaje', mods: { flor: true } },
     alcancia: { name: 'Alcancía', desc: 'El interés puede llegar hasta 10 monedas.', price: 4, kind: 'economia', econ: { interestCap: 5 } },
     propina: { name: 'Propina', desc: '+1 moneda por cada mano que ganás.', price: 5, kind: 'economia', econ: { handCoin: 1 } },
     cuentero: { name: 'Cuentero', desc: '+2 monedas por cada envido que ganás.', price: 4, kind: 'economia', econ: { envidoCoin: 2 } },
@@ -65,7 +66,8 @@
   };
   const AMULET_IDS = Object.keys(AMULETS);
   // Los rivales solo llevan amuletos de puntaje y cartas: la economia no les sirve y el bot no lee pistas.
-  const RIVAL_AMULETS = AMULET_IDS.filter((id) => ['puntaje', 'cartas'].includes(AMULETS[id].kind));
+  // La flor es solo tuya: el bot no la sabe cantar.
+  const RIVAL_AMULETS = AMULET_IDS.filter((id) => id !== 'flor' && ['puntaje', 'cartas'].includes(AMULETS[id].kind));
 
   const PERSONALITIES = {
     equilibrado: { name: 'El Profe', desc: 'Juega derecho, sin sorpresas.', traits: {} },
@@ -205,6 +207,7 @@
     for (const ev of events) {
       if (ev.type === 'hand-end' && ev.winner === HUMAN) gain(econ.handCoin, 'mano');
       else if (ev.type === 'envido-result' && ev.winner === HUMAN) gain(econ.envidoCoin, 'envido');
+      else if (ev.type === 'flor' && ev.by === HUMAN) gain(econ.envidoCoin, 'flor');
       else if (ev.type === 'game-end') run = finishMatch(run, ev.winner === HUMAN, gain, rng);
     }
     return { run, gains };
@@ -217,7 +220,8 @@
     const interest = interestOf(run);
     gain(winReward(run.round), 'victoria');
     gain(interest, 'interés');
-    const next = { ...run, wins: run.wins + 1, phase: 'shop', match: null };
+    // Las mejoras de cartas valen para una sola partida: se gastan al terminarla.
+    const next = { ...run, wins: run.wins + 1, phase: 'shop', match: null, upgrades: {} };
     next.best = Math.max(next.best, next.wins);
     return rollShop(next, rng, 0);
   }
@@ -236,10 +240,10 @@
       const envido = T.envidoPoints([current]);
       if (rng() < 0.5 && rank < MAX_UPGRADED_RANK) {
         const value = Math.min(rank + FILO_STEP, MAX_UPGRADED_RANK);
-        return { type: 'upgrade', key, field: 'rank', value, price: UPGRADE_PRICE, name: `Filo: ${cardName(card)}`, desc: `El ${cardName(card)} mata más fuerte en el truco.` };
+        return { type: 'upgrade', key, field: 'rank', value, price: UPGRADE_PRICE, name: `Filo: ${cardName(card)}`, desc: `El ${cardName(card)} mata más fuerte en el truco. Solo la próxima partida.` };
       }
       if (envido < BRILLO_ENVIDO) {
-        return { type: 'upgrade', key, field: 'envido', value: BRILLO_ENVIDO, price: UPGRADE_PRICE, name: `Brillo: ${cardName(card)}`, desc: `El ${cardName(card)} vale 7 para el envido.` };
+        return { type: 'upgrade', key, field: 'envido', value: BRILLO_ENVIDO, price: UPGRADE_PRICE, name: `Brillo: ${cardName(card)}`, desc: `El ${cardName(card)} vale 7 para el envido. Solo la próxima partida.` };
       }
     }
     return null;

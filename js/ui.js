@@ -18,10 +18,9 @@
     const LOG_LIMIT = 60;
     const RESET_CONFIRM_MS = 3000;
     const MIN_INSIGHT_SAMPLES = 3;
-    const FLY_MS = 560;
-    const IMPACT_AT = 0.82; // fraccion del vuelo en que la carta toca el paño
-    const IMPACT_MS = 520;
-    const KNOCK_MS = 150;
+    const THROW_DY = 110; // de donde sale volando la carta: desde abajo (vos) o desde arriba (rival)
+    const THROW_DX = 70;
+    const THROW_ROT = 36;
     const DEAL_STEP_S = 0.12;
     const POINT_STEP_S = 0.14;
     const MAX_POINT_TICKS = 5;
@@ -45,6 +44,7 @@
     })();
 
     const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const fx = window.TrucoTableFx.create();
     const Sound = window.TrucoSoundFactory.createSound({
       AudioContextCtor: window.AudioContext || window.webkitAudioContext,
       storage: (() => { try { return window.localStorage; } catch (err) { return null; } })(),
@@ -119,6 +119,7 @@
           if (ev.response === 'reject') return 'No quiero';
           return null;
         case 'mazo': return 'Me voy al mazo';
+        case 'flor': return '¡Flor!';
         default: return null;
       }
     }
@@ -137,6 +138,7 @@
             : `Envido no querido: +${ev.awarded} para ${ev.winner === HUMAN ? 'vos' : names.ref}${bonusText(ev)}`;
         case 'hand-end': return `Mano terminada: +${ev.points} para ${ev.winner === HUMAN ? 'vos' : names.ref}${bonusText(ev)}`;
         case 'envido-first': return `${who(ev.by)}: envido primero`;
+        case 'flor': return `${who(ev.by)}: ¡Flor! +${ev.awarded} (se anula el envido)`;
         default: {
           const t = eventText(ev);
           return t && ev.by !== undefined ? `${who(ev.by)}: ${t}` : t && ev.player !== undefined ? `${who(ev.player)}: ${t}` : null;
@@ -164,57 +166,57 @@
 
     // ---------- render ----------
 
-    // Cada cuadrito: arriba, derecha, abajo, izquierda y la diagonal que lo cierra.
+    // Planilla como en las salas: cuadritos de cinco palitos, 3 malas a la izquierda y 3 buenas a la derecha.
     const STICKS = [[3, 3, 27, 3], [27, 3, 27, 27], [27, 27, 3, 27], [3, 27, 3, 3], [3, 27, 27, 3]];
-    const GROUP_SIZE = 5;
-    const GROUP_W = 30;
-    const GROUP_GAP = 8;
-    const HALF_GAP = 22;
+    const SQUARE = 30;
+    const SQUARE_GAP = 8;
+    const HALF_GAP = 14;
+    const SQUARES_PER_HALF = 3;
 
-    function tallySvg(score, previous) {
-      const groups = TARGET / GROUP_SIZE;
-      const half = groups / 2;
-      const width = groups * GROUP_W + (groups - 1) * GROUP_GAP + (HALF_GAP - GROUP_GAP);
+    function tallySvg(score, previous, label) {
+      const width = 2 * SQUARE + HALF_GAP;
+      const height = SQUARES_PER_HALF * SQUARE + (SQUARES_PER_HALF - 1) * SQUARE_GAP;
       let sticks = '';
-      for (let g = 0; g < groups; g++) {
-        const x = g * (GROUP_W + GROUP_GAP) + (g >= half ? HALF_GAP - GROUP_GAP : 0);
+      for (let g = 0; g < SQUARES_PER_HALF * 2; g++) {
+        const x = Math.floor(g / SQUARES_PER_HALF) * (SQUARE + HALF_GAP);
+        const y = (g % SQUARES_PER_HALF) * (SQUARE + SQUARE_GAP);
         STICKS.forEach(([x1, y1, x2, y2], k) => {
-          const n = g * GROUP_SIZE + k;
+          const n = g * STICKS.length + k;
           const on = n < score;
           const fresh = on && n >= previous;
-          sticks += `<line class="stick${on ? ' on' : ''}${fresh ? ' fresh' : ''}" x1="${x + x1}" y1="${y1}" x2="${x + x2}" y2="${y2}"/>`;
+          sticks += `<line class="stick${on ? ' on' : ''}${fresh ? ' fresh' : ''}" x1="${x + x1}" y1="${y + y1}" x2="${x + x2}" y2="${y + y2}"/>`;
         });
       }
-      return `<svg viewBox="0 0 ${width} 30" role="img" aria-label="${score} de ${TARGET} puntos">${sticks}</svg>`;
+      return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${label}: ${score} de ${TARGET} puntos">${sticks}</svg>`;
     }
 
     const shownScores = [0, 0];
 
     function renderScores() {
-      [[HUMAN, 'you'], [BOT, 'bot']].forEach(([p, id]) => {
+      const board = $('board');
+      board.style.setProperty('--cols', '2');
+      board.replaceChildren(...[HUMAN, BOT].map((p) => {
+        const label = p === HUMAN ? 'Vos' : names.name;
         const score = Math.min(state.scores[p], TARGET);
-        const num = $(`num-${id}`);
+        const col = el('div', `plan-col ${p === HUMAN ? 'me' : 'foe'}`);
+        const head = el('div', 'col-head');
+        head.append(el('span', 'score-name', label), el('span', 'score-num', String(state.scores[p])));
+        const tally = el('div', 'tally');
+        tally.innerHTML = tallySvg(score, shownScores[p], label);
+        col.append(head, tally);
         const gained = score - shownScores[p];
-        if (gained > 0) celebrateScore(id, gained);
-        if (num.textContent !== String(state.scores[p])) {
-          num.classList.remove('bump');
-          void num.offsetWidth;
-          num.classList.add('bump');
-        }
-        num.textContent = String(state.scores[p]);
-        $(`tally-${id}`).innerHTML = tallySvg(score, shownScores[p]);
+        if (gained > 0) celebrateScore(col, gained);
         shownScores[p] = score;
-      });
+        return col;
+      }));
       const live = state.phase !== 'idle';
+      $('bot-name').textContent = names.name;
       $('bot-mano').hidden = !live || state.mano !== BOT;
       $('you-mano').hidden = !live || state.mano !== HUMAN;
     }
 
-    /** Los puntos nuevos salen flotando del marcador y suenan como fósforos que se prenden. */
-    function celebrateScore(id, gained) {
-      const row = $(`num-${id}`).closest('.score-row');
-      row.classList.remove('scored');
-      void row.offsetWidth;
+    /** Los puntos nuevos salen flotando de la planilla y suenan como fósforos que se prenden. */
+    function celebrateScore(row, gained) {
       row.classList.add('scored');
       const pop = el('span', 'score-pop', `+${gained}`);
       pop.setAttribute('aria-hidden', 'true');
@@ -268,6 +270,7 @@
     }
 
     function envidoHintText(view) {
+      if (view.myFlor && !state.florDone) return `¡Tenés flor! Cantala antes de tirar`;
       const mine = `Tenés ${view.myEnvido} de envido`;
       if (view.oppEnvidoHigh === undefined) return mine;
       return `${mine} · ${capitalize(names.ref)} tiene ${view.oppEnvidoHigh ? 'más de 27' : '27 o menos'}`;
@@ -275,32 +278,78 @@
 
     const seenPlays = new Set();
 
+    const roleOf = (p) => (p === HUMAN ? 'me' : 'foe');
+    const initialOf = (p) => (p === HUMAN ? 'V' : (names.name[0] || 'B').toUpperCase());
+    const playKey = (p, i) => `${state.handNo}-${p}-${i}`;
+
+    /** En la baza en juego hay a lo sumo una carta (con dos jugadores, la segunda la cierra): esa va ganando. */
+    function leadingPlayer() {
+      if (!state.played || !['play', 'respond-truco', 'respond-envido'].includes(state.phase)) return null;
+      const trick = state.results.length;
+      const played = [HUMAN, BOT].filter((p) => state.played[p][trick]);
+      return played.length === 1 ? { trick, player: played[0] } : null;
+    }
+
+    function trickResult(winner) {
+      if (winner === undefined) return '';
+      if (winner === -1) return 'Parda';
+      return winner === HUMAN ? 'Ganás vos' : `Gana ${names.name}`;
+    }
+
+    /** Bazas como en las salas: las dos cartas encimadas, borde del color de quien la tiró, y quien va ganando. */
     function renderTricks() {
       const wrap = $('tricks');
-      const cols = [0, 1, 2].map((i) => {
-        const col = el('div', 'trick');
+      wrap.className = 'tricks n2';
+      const legendDot = (role, text) => {
+        const item = el('span', '', text);
+        const dot = el('i');
+        dot.style.background = `var(--role-${role})`;
+        item.prepend(dot);
+        return item;
+      };
+      $('baza-legend').replaceChildren(legendDot('me', 'Vos'), legendDot('foe', names.name));
+      const leading = leadingPlayer();
+      wrap.replaceChildren(...[0, 1, 2].map((i) => {
         const winner = state.results ? state.results[i] : undefined;
+        const box = el('div', `baza${winner === undefined ? '' : winner === -1 ? ' parda' : winner === HUMAN ? ' won-me' : ' won-foe'}`);
+        const stack = el('div', 'stack');
         [BOT, HUMAN].forEach((p) => {
-          const slot = el('div', 'slot');
           const card = state.played ? state.played[p][i] : null;
-          if (card) {
-            const face = cardFace(card, false);
-            const key = `${state.handNo}-${p}-${i}`;
-            face.style.setProperty('--tilt', `${((i * 7 + p * 5) % 7) - 3}deg`);
-            if (!seenPlays.has(key)) { seenPlays.add(key); face.classList.add('drop'); }
-            slot.append(face);
-            if (winner === p) {
-              slot.classList.add('won');
-              if (!seenPlays.has(`${key}-win`)) { seenPlays.add(`${key}-win`); face.classList.add('celebrate'); }
-            }
-            else if (winner !== undefined && winner !== -1) slot.classList.add('lost');
-          }
-          col.append(slot);
+          if (card) stack.append(playedCard(card, p, i, leading));
         });
-        col.append(el('span', 'trick-label', winner === -1 ? 'Parda' : `Baza ${i + 1}`));
-        return col;
-      });
-      wrap.replaceChildren(...cols);
+        const live = leading && leading.trick === i;
+        if (live) box.classList.add('live');
+        const result = live ? (leading.player === HUMAN ? 'Vas ganando' : `Va ganando ${names.name}`) : trickResult(winner);
+        box.append(stack, el('span', 'trick-label', `Baza ${i + 1}`));
+        if (result) {
+          const note = el('strong', 'trick-result', result);
+          if (live) note.classList.add(`lead-${roleOf(leading.player)}`);
+          box.append(note);
+        }
+        return box;
+      }));
+    }
+
+    function playedCard(card, p, i, leading) {
+      const face = cardFace(card, true);
+      face.classList.add(`role-${roleOf(p)}`);
+      if (leading && leading.trick === i && leading.player === p) { face.classList.add('leading'); face.dataset.lead = 'Gana'; }
+      const tag = el('span', `who ${roleOf(p)}`, initialOf(p));
+      tag.setAttribute('aria-hidden', 'true');
+      face.append(tag);
+      const caption = `${who(p)} · Baza ${i + 1}`;
+      face.title = `${caption}: ${cardName(card)}`;
+      face.setAttribute('aria-label', `${caption}: ${cardName(card)}`);
+      fx.peekable(face, { src: window.CardArt.url(card), name: cardName(card), caption });
+      const key = playKey(p, i);
+      if (!seenPlays.has(key)) {
+        seenPlays.add(key);
+        face.classList.add('drop');
+        face.style.setProperty('--fy', `${p === HUMAN ? THROW_DY : -THROW_DY}px`);
+        face.style.setProperty('--fx', `${Math.round((Math.random() - 0.5) * THROW_DX)}px`);
+        face.style.setProperty('--fr', `${Math.round((Math.random() - 0.5) * THROW_ROT)}deg`);
+      }
+      return face;
     }
 
     function button(label, cls, onClick, index = 0) {
@@ -401,6 +450,7 @@
       } else if (envidos.length > 1) {
         nodes.push(envidoMenu(envidos));
       }
+      if (hasType('flor').length) nodes.push(button('Flor', 'cool', () => humanAct({ type: 'flor' })));
       if (hasType('mazo').length) nodes.push(button('Mazo', 'ghost', () => humanAct({ type: 'mazo' })));
       nodes.forEach((n, i) => n.style.setProperty('--i', String(i)));
       box.append(...nodes);
@@ -483,23 +533,38 @@
       $('seat-you').classList.toggle('turn', myTurn);
       if (myTurn && !wasMyTurn) Sound.play('turn', { delay: 0.35 });
       wasMyTurn = myTurn;
-      document.querySelector('.seat-bot').classList.toggle('thinking', state.turn === BOT && !['hand-over', 'game-over', 'idle'].includes(state.phase));
+      $('rival').classList.toggle('turn', state.turn === BOT && !['hand-over', 'game-over', 'idle'].includes(state.phase));
     }
 
     // ---------- flujo ----------
 
-    const TRICK_SOUND_DELAY_S = (FLY_MS * IMPACT_AT + 120) / 1000;
+    // La baza se cierra cuando la segunda carta todavía está en el aire: sonido y chispas al aterrizar.
+    const TRICK_FX_MS = 380;
+    const HAND_REASONS = { tricks: 'Ganó las bazas', 'truco-reject': 'No quisieron el truco', mazo: 'Se fue al mazo' };
+    const SHOUT_KINDS = { 'truco-call': 'truco', 'envido-call': 'envido', mazo: 'noquiero', flor: 'flor' };
 
     const shoutKind = (ev) => (ev.type === 'truco-call' ? 'shout-truco' : ev.type === 'envido-call' ? 'shout-envido' : '');
 
-    /** Cada hecho del juego tiene su sonido; el golpe de carta lo pone flyToTable al aterrizar. */
+    /** Cartel gigante de los cantos, como en las salas. */
+    function shoutFor(ev, text, speaker) {
+      let kind = SHOUT_KINDS[ev.type];
+      if (ev.type === 'truco-response' || ev.type === 'envido-response') kind = ev.response === 'accept' ? 'quiero' : ev.response === 'reject' ? 'noquiero' : 'truco';
+      if (!kind || !text) return;
+      fx.shout({ kind, text, who: speaker === undefined ? '' : who(speaker), level: ev.type === 'truco-call' ? ev.level : 1 });
+    }
+
+    /** Cada hecho del juego tiene su sonido y su efecto. */
     function reactToEvent(ev) {
       switch (ev.type) {
+        case 'play':
+          Sound.play('play');
+          break;
         case 'truco-call':
           Sound.play('knock', { level: ev.level });
-          knockTable(ev.level);
+          fx.knock(ev.level);
           break;
         case 'envido-call':
+        case 'flor':
           Sound.play('envido');
           break;
         case 'truco-response':
@@ -511,20 +576,20 @@
           Sound.play('mazo');
           break;
         case 'trick':
-          if (ev.winner !== -1) Sound.play(ev.winner === HUMAN ? 'trickWin' : 'trickLoss', { delay: TRICK_SOUND_DELAY_S });
+          if (ev.winner === -1) break;
+          Sound.play(ev.winner === HUMAN ? 'trickWin' : 'trickLoss', { delay: TRICK_FX_MS / 1000 });
+          setTimeout(() => fx.sparks(ev.winner === HUMAN), TRICK_FX_MS);
+          break;
+        case 'hand-end':
+          fx.handEnd({
+            won: ev.winner === HUMAN,
+            title: ev.winner === HUMAN ? '¡Mano tuya!' : 'Mano del rival',
+            why: HAND_REASONS[ev.reason] || '',
+            points: ev.points,
+          });
           break;
         default:
       }
-    }
-
-    function knockTable(level) {
-      const table = document.querySelector('.table');
-      const knocks = Math.min(Math.max(level, 1), 3);
-      table.style.setProperty('--n', String(knocks));
-      table.classList.remove('knock');
-      void table.offsetWidth;
-      table.classList.add('knock');
-      setTimeout(() => table.classList.remove('knock'), KNOCK_MS * knocks + 50);
     }
 
     function ingest(events) {
@@ -535,6 +600,7 @@
         const speak = eventText(ev);
         const speaker = ev.by !== undefined ? ev.by : ev.player;
         reactToEvent(ev);
+        shoutFor(ev, speak, speaker);
         if (speak && speaker !== undefined && ev.type !== 'play') say(speaker, speak, shoutKind(ev));
         if (ev.type === 'envido-result' && ev.accepted) {
           say(HUMAN, `Tengo ${ev.points[HUMAN]}`);
@@ -544,60 +610,18 @@
       if (opts.onEvents) opts.onEvents(events, state);
     }
 
-    /** Dónde estaba la carta que se va a jugar, para que la animación salga de ahí. */
-    function handCardRect(player, action) {
-      if (action.type !== 'play') return null;
-      const hand = $(player === HUMAN ? 'you-hand' : 'bot-hand');
-      const node = hand.children[action.index] || hand;
-      return node.getBoundingClientRect();
-    }
-
-    /** Una onda se abre desde la casilla justo cuando la carta toca el paño. */
-    function landingImpact(slot) {
-      setTimeout(() => {
-        if (!slot.isConnected) return;
-        const ring = el('span', 'impact');
-        slot.append(ring);
-        setTimeout(() => ring.remove(), IMPACT_MS);
-      }, FLY_MS * IMPACT_AT);
-    }
-
-    function flyToTable(player, from) {
-      const card = document.querySelector('.slot .card.drop');
-      if (!from || !card) return;
-      Sound.play('play', { delay: (FLY_MS * IMPACT_AT) / 1000 });
-      landingImpact(card.parentElement);
-      if (!card.animate || REDUCED_MOTION.matches) return;
-      const to = card.getBoundingClientRect();
-      const dx = from.left + from.width / 2 - (to.left + to.width / 2);
-      const dy = from.top + from.height / 2 - (to.top + to.height / 2);
-      const scale = from.width / to.width;
-      const tilt = parseFloat(card.style.getPropertyValue('--tilt')) || 0;
-      const flip = player === BOT ? 'perspective(700px) rotateY(90deg) ' : '';
-      const lift = 'drop-shadow(0 18px 14px rgba(0, 0, 0, 0.5))';
-      card.style.zIndex = '20';
-      const flight = card.animate([
-        { transform: `translate(${dx}px, ${dy}px) scale(${scale}) ${flip}rotate(${player === HUMAN ? -6 : 8}deg)`, filter: lift, offset: 0 },
-        { transform: `translate(${dx * 0.3}px, ${dy * 0.3 - 28}px) scale(${(scale + 1) / 2 + 0.12}) ${flip ? 'perspective(700px) rotateY(35deg) ' : ''}rotate(${tilt * 2}deg)`, filter: lift, offset: 0.55, easing: 'cubic-bezier(0.5, 0, 0.9, 0.6)' },
-        { transform: `translate(0, 0) scale(0.95) rotate(${tilt}deg)`, filter: 'drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6))', offset: 0.82 },
-        { transform: `translate(0, 0) scale(1) rotate(${tilt}deg)`, filter: 'drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55))', offset: 1 },
-      ], { duration: FLY_MS, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
-      flight.onfinish = () => { card.style.zIndex = ''; };
-    }
-
     function apply(player, action) {
-      const from = handCardRect(player, action);
       selected = null;
       const result = step(state, player, action);
       state = result.state;
       ingest(result.events);
       afterChange();
-      flyToTable(player, from);
     }
 
     function afterChange() {
       render();
-      if (state.phase === 'game-over') return showEnd();
+      // El cartel final espera a que se vaya el telón de la última mano.
+      if (state.phase === 'game-over') return fx.afterCurtain(showEnd);
       if (state.phase !== 'hand-over' && state.turn === BOT) scheduleBot();
     }
 
@@ -678,6 +702,9 @@
       if (next.botRef) names.ref = next.botRef;
       if ($('end')) $('end').hidden = true;
       logLines.length = 0;
+      seenPlays.clear(); // las claves se repiten en cada partida (mano 1, 2...)
+      shownScores[HUMAN] = 0;
+      shownScores[BOT] = 0;
       state = makeGame();
       dealNext();
     }
@@ -689,6 +716,9 @@
       shownScores[HUMAN] = Math.min(state.scores[HUMAN], TARGET);
       shownScores[BOT] = Math.min(state.scores[BOT], TARGET);
       dealtHandNo = state.handNo; // ya estaban repartidas: sin animacion de reparto
+      if (state.played) {
+        [HUMAN, BOT].forEach((p) => state.played[p].forEach((card, i) => { if (card) seenPlays.add(playKey(p, i)); }));
+      }
       afterChange();
     }
 
@@ -713,6 +743,14 @@
 
     const wideScreen = window.matchMedia('(min-width: 960px)');
     if ($('brain')) $('brain').open = wideScreen.matches;
+    // Como en las salas: en escritorio la planilla va arriba de la columna derecha; en celular, arriba de la mesa.
+    function placeBoard() {
+      if (wideScreen.matches) document.querySelector('.side').prepend($('board'));
+      else $('screen-table').prepend($('board'));
+    }
+    placeBoard();
+    wideScreen.addEventListener('change', placeBoard);
+    fx.seedDust();
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.menu-wrap')) closeMenus();
       clearSelection();

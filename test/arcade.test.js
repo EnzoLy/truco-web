@@ -75,6 +75,26 @@ test('ganar la partida paga premio e interes y abre la tienda', () => {
   assert.ok(next.shop.items.length >= 3);
 });
 
+test('las mejoras de cartas duran una sola partida: al ganarla se borran', () => {
+  const run = { ...A.newRun(seeded(1)), upgrades: { '4copa': { rank: 10 } } };
+  const { run: next } = A.onEvents(run, [{ type: 'game-end', winner: 0 }], seeded(3));
+  assert.deepEqual(next.upgrades, {});
+  assert.deepEqual(run.upgrades, { '4copa': { rank: 10 } }, 'no muta la run original');
+});
+
+test('el amuleto de flor habilita la flor en el motor y cantarla da monedas', () => {
+  const run = { ...A.newRun(seeded(1)), amulets: ['flor'] };
+  assert.equal(A.modsFor(run)[0].flor, true);
+  assert.equal(A.modsFor(A.newRun(seeded(1)))[0].flor, undefined);
+  const { run: next, gains } = A.onEvents(run, [{ type: 'flor', by: 0, awarded: 3 }, { type: 'flor', by: 1, awarded: 3 }], seeded(3));
+  assert.equal(next.coins, run.coins + 1);
+  assert.deepEqual(gains.map((g) => g.reason), ['flor']);
+});
+
+test('los rivales nunca traen el amuleto de flor', () => {
+  for (let seed = 1; seed < 60; seed++) assert.ok(!A.rivalFor(8, seeded(seed)).amulets.includes('flor'));
+});
+
 test('el interes tiene tope y la alcancia lo sube', () => {
   const rich = { ...A.newRun(seeded(1)), coins: 80 };
   assert.equal(A.interestOf(rich), 5);

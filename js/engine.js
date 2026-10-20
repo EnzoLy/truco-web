@@ -1,4 +1,4 @@
-/* Motor de reglas del Truco argentino (1 contra 1, sin flor).
+/* Motor de reglas del Truco argentino (1 contra 1). Sin flor, salvo para quien tenga mods.flor (amuleto del arcade).
  * Funciones puras: step() devuelve un estado nuevo y la lista de eventos. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -15,6 +15,7 @@
   const ENVIDO_OPENERS = ['envido', 'real', 'falta'];
   const HAND_SIZE = 3;
   const ENVIDO_HINT_LINE = 27;
+  const FLOR_POINTS = 3;
 
   const clone = (o) => structuredClone(o);
 
@@ -104,7 +105,7 @@
   }
 
   // ---------- mods (opcionales: amuletos del modo arcade) ----------
-  // mods[p] = { trucoBonus, envidoBonus, envidoCountBonus, peek: 'one'|'all', envidoHint, upgrades: { '4copa': { rank, envido } } }
+  // mods[p] = { trucoBonus, envidoBonus, envidoCountBonus, peek: 'one'|'all', envidoHint, flor, upgrades: { '4copa': { rank, envido } } }
 
   const modOf = (s, p) => (s.mods && s.mods[p]) || null;
   const modNumber = (s, p, field) => {
@@ -162,6 +163,7 @@
     s.pending = null;
     s.suspended = null;
     s.envido = { done: false, stack: [], result: null };
+    s.florDone = false;
     s.handResult = null;
     return { state: s, events: [{ type: 'deal', mano: s.mano, handNo: s.handNo }] };
   }
@@ -178,6 +180,16 @@
       s.phase === 'play' && s.turn === p && s.results.length === 0 &&
       !s.envido.done && s.trucoLevel === 0 && s.cur.cards[p] === null
     );
+  }
+
+  const hasFlor = (cards) => cards.length === HAND_SIZE && cards.every((card) => card.suit === cards[0].suit);
+  const mayFlor = (s, p) => Boolean(modOf(s, p) && modOf(s, p).flor) && hasFlor(s.dealt[p]);
+
+  /** Flor: solo con el amuleto, en la primera baza antes de tirar, mientras el envido siga abierto. */
+  function canCallFlor(s, p) {
+    if (s.turn !== p || s.florDone || !mayFlor(s, p) || s.results.length > 0 || s.cur.cards[p] !== null) return false;
+    if (s.phase === 'respond-envido') return true;
+    return (s.phase === 'play' || s.phase === 'respond-truco') && !s.envido.done && s.trucoLevel === 0;
   }
 
   function legalActions(s, p) {
@@ -198,6 +210,7 @@
       out.push({ type: 'accept' }, { type: 'reject' });
       envidoRaiseOptions(s.pending.stack).forEach((what) => out.push({ type: 'envido', what }));
     }
+    if (canCallFlor(s, p)) out.push({ type: 'flor' });
     return out;
   }
 
@@ -328,6 +341,20 @@
     resumeAfterEnvido(s);
   }
 
+  /** Flor: 3 puntos y el envido queda cerrado (si te lo habían cantado, se anula sin puntos). */
+  function callFlor(s, ev, player) {
+    const { total } = award(s, player, FLOR_POINTS, null);
+    s.florDone = true;
+    s.envido = { done: true, stack: [], result: null };
+    ev.push({ type: 'flor', by: player, awarded: total, scores: [...s.scores] });
+    if (finishIfWon(s, ev, player)) {
+      s.pending = null;
+      s.suspended = null;
+      return;
+    }
+    if (s.phase === 'respond-envido') resumeAfterEnvido(s);
+  }
+
   function answerTruco(s, ev, player, accepted) {
     const p = s.pending;
     ev.push({ type: 'truco-response', by: player, caller: p.by, level: p.level, response: accepted ? 'accept' : 'reject' });
@@ -355,6 +382,7 @@
       case 'play': playCard(s, ev, player, action.index); break;
       case 'truco': callTruco(s, ev, player); break;
       case 'envido': callEnvido(s, ev, player, action.what); break;
+      case 'flor': callFlor(s, ev, player); break;
       case 'accept':
       case 'reject': {
         const accepted = action.type === 'accept';
@@ -407,6 +435,7 @@
     const mine = modOf(s, p);
     if (!mine) return view;
     view.mods = clone(mine);
+    view.myFlor = mayFlor(s, p);
     if (mine.peek === 'all') {
       view.oppHand = clone(s.hands[opp]);
       view.oppEnvidoTotal = envidoOf(s, opp);

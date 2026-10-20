@@ -44,7 +44,7 @@
 .seat-bot.thinking { border-radius: var(--r); box-shadow: 0 0 0 2px var(--signal), 0 0 14px rgba(230, 184, 60, 0.3); }
 
 /* tus cartas jugables brillan dorado cuando es tu turno */
-.seat-you.turn .hand button.card:not(:disabled) img { box-shadow: 0 0 0 2px rgba(230, 184, 60, 0.85); border-radius: 7px; }
+.seat-you.turn .hand button.card:not(:disabled) img { box-shadow: 0 0 0 2px rgba(230, 184, 60, 0.85), var(--card-shadow); border-radius: 7px; }
 
 /* cantos: letrero gigante que cruza la pantalla */
 .shout { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none; overflow: hidden; }

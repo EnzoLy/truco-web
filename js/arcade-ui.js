@@ -85,7 +85,6 @@
     if (!run.amulets.length) $('amulet-desc').textContent = '';
 
     const r = run.rival;
-    $('rival-seat').textContent = r.name;
     $('rival-name').textContent = r.boss ? `${r.name} · Jefe` : r.name;
     $('rival-desc').textContent = r.desc;
     $('rival-amulets').replaceChildren(...r.amulets.map(amuletItem));
