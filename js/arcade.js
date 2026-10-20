@@ -91,6 +91,26 @@
       traits: { trucoThreshold: 0.74, bluffTruco: 0.2, bluffEnvido: 0.2, acceptShift: 0.2, envidoAcceptShift: 2 },
       duoTraits: { trucoShift: 1, envidoShift: 2, callChance: 0.4, bluffCall: 0.01, acceptBluff: 0.1, envidoBluff: 0.02 },
     },
+    agresivo: {
+      name: 'El Matón', desc: 'Canta y sube todo, y casi nunca se achica.',
+      traits: { trucoThreshold: 0.55, bluffTruco: 1.5, bluffTrucoBase: 0.1, acceptShift: 0, envidoAcceptShift: -2, envidoCallShift: -2 },
+      duoTraits: { trucoShift: -1, callChance: 0.85, raiseChance: 0.8, bluffCall: 0.15, acceptBluff: 0.55, envidoCallChance: 0.9 },
+    },
+    timido: {
+      name: 'El Cagón', desc: 'Se baja de casi todo: hay que apretarlo.',
+      traits: { trucoThreshold: 0.8, bluffTruco: 0, bluffEnvido: 0, acceptShift: 0.32, envidoAcceptShift: 3, envidoCallShift: 2 },
+      duoTraits: { trucoShift: 1.5, envidoShift: 3, callChance: 0.3, raiseChance: 0.25, bluffCall: 0, acceptBluff: 0.03, envidoCallChance: 0.4, envidoBluff: 0 },
+    },
+    envidoso: {
+      name: 'El Envidoso', desc: 'Vive cantando envido, aunque no tenga nada.',
+      traits: { trucoThreshold: 0.72, bluffEnvido: 2.5, bluffEnvidoBase: 0.25, envidoCallShift: -4, envidoAcceptShift: -2 },
+      duoTraits: { trucoShift: 0.5, envidoShift: -4, callChance: 0.45, envidoCallChance: 1, envidoBluff: 0.4 },
+    },
+    loco: {
+      name: 'El Loco', desc: 'Impredecible: farolea y juega las cartas al revés.',
+      traits: { bluffTruco: 2.5, bluffTrucoBase: 0.15, bluffEnvido: 2, bluffEnvidoBase: 0.1, cardNoise: 0.9 },
+      duoTraits: { bluffCall: 0.25, acceptBluff: 0.6, envidoBluff: 0.3, callChance: 0.4, envidoShift: -1 },
+    },
     cargado: { name: 'El Coleccionista', desc: 'Llega a la mesa con amuletos propios.', traits: {}, duoTraits: {}, amulets: true },
     tramposo: {
       name: 'El Tahúr', desc: 'Hace trampa: ve tus cartas.', duoDesc: 'Hace trampa: ve tus cartas y las de tu compañero.',
@@ -98,7 +118,7 @@
     },
   };
   const PERSONALITY_IDS = Object.keys(PERSONALITIES);
-  const COMMON_RIVALS = ['equilibrado', 'mentiroso', 'conservador'];
+  const COMMON_RIVALS = ['equilibrado', 'mentiroso', 'conservador', 'agresivo', 'timido', 'envidoso', 'loco'];
 
   // ---------- rivales ----------
 

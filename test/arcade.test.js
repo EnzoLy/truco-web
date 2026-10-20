@@ -279,3 +279,21 @@ test('ningún amuleto deja ver la mano del rival en todas las manos', () => {
   }
   assert.equal(A.AMULETS['bola-de-cristal'].mods.peekEvery, 3);
 });
+
+test('cada personalidad común tiene traits propios para el 1v1 y para el dúo', () => {
+  const ids = ['agresivo', 'timido', 'envidoso', 'loco'];
+  for (const id of ids) {
+    assert.ok(A.PERSONALITY_IDS.includes(id), id);
+    const p = A.PERSONALITIES[id];
+    assert.ok(Object.keys(p.traits).length > 0, `${id} 1v1`);
+    assert.ok(Object.keys(p.duoTraits).length > 0, `${id} dúo`);
+    assert.ok(!p.cheat && !p.boss, id);
+  }
+});
+
+test('cada amuleto tiene su icono SVG propio', () => {
+  const icons = require('../js/amulet-icons.js');
+  const ids = Object.keys(global.TrucoAmuletIcons || icons);
+  for (const id of A.AMULET_IDS) assert.ok((global.TrucoAmuletIcons || icons)[id], `falta el icono de ${id}`);
+  assert.equal(new Set(ids.map((id) => (global.TrucoAmuletIcons || icons)[id])).size, ids.length, 'iconos repetidos');
+});

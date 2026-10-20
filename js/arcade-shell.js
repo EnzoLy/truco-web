@@ -20,6 +20,8 @@
     cartas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 6.3l6-1.6 3.6 13.5-6 1.6z"/><path d="M11 3h7a1.5 1.5 0 0 1 1.5 1.5v14A1.5 1.5 0 0 1 18 20h-3.3L11 6.2z" opacity=".7"/></svg>',
     info: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5C6.5 5 2.6 9.4 1.5 12c1.1 2.6 5 7 10.5 7s9.4-4.4 10.5-7C21.4 9.4 17.5 5 12 5zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/><circle cx="12" cy="12" r="2"/></svg>',
   };
+  /** Icono propio del amuleto; si falta cae al del tipo. */
+  const amuletIcon = (id) => (window.TrucoAmuletIcons && window.TrucoAmuletIcons[id]) || KIND_ICONS[A.AMULETS[id].kind];
   const UPGRADE_NAMES = { rank: 'Filo', envido: 'Brillo' };
   const PAGES = { solo: '/arcade', duo: '/arcade-duo' };
   const OVERLAYS = ['modes', 'partner-pick', 'coop-join', 'coop-lobby', 'intro', 'shop', 'over'];
@@ -60,7 +62,8 @@
 
   function amuletChip(id) {
     const a = A.AMULETS[id];
-    const chip = el('button', `amulet kind-${a.kind}`, a.name);
+    const chip = el('button', `amulet kind-${a.kind}`);
+    chip.append(iconNode('amulet-icon', amuletIcon(id)), el('span', '', a.name));
     chip.type = 'button';
     chip.title = a.desc;
     chip.addEventListener('click', () => { $('amulet-desc').textContent = `${a.name}: ${a.desc}`; });
@@ -206,7 +209,7 @@
       const node = el('article', `offer kind-${a.kind}${item.sold ? ' sold' : ''}`);
       node.style.setProperty('--i', String(index));
       const top = el('div', 'offer-top');
-      top.append(iconNode('offer-icon', KIND_ICONS[a.kind]), el('span', 'offer-kind', KIND_NAMES[a.kind]));
+      top.append(iconNode('offer-icon', amuletIcon(item.id)), el('span', 'offer-kind', KIND_NAMES[a.kind]));
       node.append(top, el('h4', 'offer-name', a.name), el('p', 'offer-desc', a.desc), buyButton(item, index, `¡${a.name} es tuyo!`));
       if (item.sold) node.append(el('span', 'stamp', 'Comprado'));
       return node;
@@ -235,7 +238,7 @@
       const info = el('button', 'owned-info');
       info.type = 'button';
       info.title = a.desc;
-      info.append(iconNode('offer-icon', KIND_ICONS[a.kind]), el('span', 'owned-name', a.name));
+      info.append(iconNode('offer-icon', amuletIcon(id)), el('span', 'owned-name', a.name));
       info.addEventListener('click', () => { $('shop-msg').textContent = `${a.name}: ${a.desc}`; });
       node.append(info);
       if (canSell) {
