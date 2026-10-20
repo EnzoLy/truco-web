@@ -77,6 +77,8 @@
   let pollTimer = null;
   let pollRun = 0;
   let watchCode = null; // sala que se mira sin sentarse
+  let lastSig = ''; // ultimo estado dibujado: si la consulta trae lo mismo, no se redibuja
+  let actionsKey = ''; // botones de accion dibujados: un menu abierto no se cierra mientras no cambien
   let lastSeq = 0;
   let firstSnapshot = true;
   let selected = null;
@@ -121,6 +123,7 @@
 
   // Sin conexion persistente: se consulta el estado cada POLL_MS, y eso tambien hace avanzar a los bots.
   function connect() {
+    lastSig = '';
     firstSnapshot = true;
     lastSeq = 0;
     kick();
@@ -188,6 +191,10 @@
   }
 
   async function onSnapshot(s) {
+    // Se consulta cada segundo: si no cambió nada, redibujar solo cierra menús y se come los toques.
+    const sig = JSON.stringify(s);
+    if (sig === lastSig) return;
+    lastSig = sig;
     const wasLobby = snap && snap.status === 'lobby';
     snap = s;
     if (s.status === 'lobby') {
@@ -212,6 +219,8 @@
     selected = null;
     shownHandNo = -1;
     rivalKey = '';
+    lastSig = '';
+    actionsKey = '';
     firstSnapshot = true;
     lastSeq = 0;
   }
@@ -742,6 +751,9 @@
   }
 
   function renderActions(view) {
+    const key = JSON.stringify([view.legal, view.phase, view.trucoLevel, view.pending && view.pending.level, snap.status, snap.signOptions.length]);
+    if (key === actionsKey) return;
+    actionsKey = key;
     const box = $('actions');
     box.replaceChildren();
     const nodes = [];
@@ -1049,6 +1061,24 @@
       $('end-wait').hidden = host;
     }
   }
+
+  /** Un click (o tecla) en cualquier lado salta el canto o el cierre de mano que esté en pantalla. */
+  function skipFx() {
+    const shoutBox = $('shout');
+    const handBox = $('handend');
+    if (!shoutBox.classList.contains('go') && !handBox.classList.contains('go')) return;
+    clearTimeout(shoutTimer);
+    clearInterval(rollTimer);
+    clearTimeout(handEndTimer);
+    clearInterval(countTimer);
+    shoutBox.classList.remove('go');
+    handBox.classList.remove('go');
+    handBox.querySelectorAll('.coin').forEach((c) => c.remove());
+    document.querySelectorAll('.spark').forEach((s) => s.remove());
+  }
+  // En captura y sin frenar el evento: el mismo click sigue a lo que haya debajo (por ejemplo, "Quiero").
+  document.addEventListener('pointerdown', skipFx, true);
+  document.addEventListener('keydown', skipFx, true);
 
   // ---------- inicio ----------
 
