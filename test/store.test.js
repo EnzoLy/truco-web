@@ -112,9 +112,7 @@ test('supabase: falla claro si faltan las variables o la base responde mal', asy
 
 test('supabase: limpia espacios y comillas de las variables y rechaza la clave publishable', async () => {
   const fake = fakePostgrest();
-  const store = createSupabaseStore({ url: ' "https://x.supabase.co"
-', key: '"sb_secret_abc"
-', fetchImpl: fake.fetchImpl });
+  const store = createSupabaseStore({ url: ' "https://x.supabase.co"\n', key: '"sb_secret_abc"\r\n', fetchImpl: fake.fetchImpl });
   await store.count();
   assert.equal(fake.calls[0].init.headers.apikey, 'sb_secret_abc');
   assert.equal(fake.calls[0].url.origin, 'https://x.supabase.co');
