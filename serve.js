@@ -21,8 +21,10 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
+  '.mp3': 'audio/mpeg',
+  '.txt': 'text/plain; charset=utf-8',
 };
-const PUBLIC = new Set(['index.html', 'bot.html', 'arcade.html', 'cartas.html', 'sala.html', 'js', 'css']);
+const PUBLIC = new Set(['index.html', 'bot.html', 'arcade.html', 'cartas.html', 'sala.html', 'js', 'css', 'sounds']);
 const PAGES = new Set(['bot', 'arcade', 'cartas', 'sala']);
 
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;

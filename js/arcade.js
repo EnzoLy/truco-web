@@ -228,6 +228,19 @@
 
   // ---------- tienda ----------
 
+  // A qué carta equivale cada valor de jerarquía del truco (14 = ancho de espada ... 1 = un 4).
+  const RANK_TEXT = {
+    14: 'el ancho de espada', 13: 'el ancho de basto', 12: 'el 7 de espada', 11: 'el 7 de oro',
+    10: 'un 3', 9: 'un 2', 8: 'un 1 de oro o copa', 7: 'un 12', 6: 'un 11', 5: 'un 10',
+    4: 'un 7 de copa o basto', 3: 'un 6', 2: 'un 5', 1: 'un 4',
+  };
+
+  /** Texto de una mejora de truco: "mata como un 3". El tope (13.5) queda entre los dos anchos. */
+  function rankText(rank) {
+    if (RANK_TEXT[rank]) return `mata como ${RANK_TEXT[rank]}`;
+    return 'le gana a todo menos al ancho de espada';
+  }
+
   function upgradeOffer(run, rng, taken) {
     const deck = T.makeDeck().filter((c) => !taken.has(T.cardKey(c)));
     // Lo que ya vale la carta, contando mejoras compradas y amuletos de cartas.
@@ -240,7 +253,7 @@
       const envido = T.envidoPoints([current]);
       if (rng() < 0.5 && rank < MAX_UPGRADED_RANK) {
         const value = Math.min(rank + FILO_STEP, MAX_UPGRADED_RANK);
-        return { type: 'upgrade', key, field: 'rank', value, price: UPGRADE_PRICE, name: `Filo: ${cardName(card)}`, desc: `El ${cardName(card)} mata más fuerte en el truco. Solo la próxima partida.` };
+        return { type: 'upgrade', key, field: 'rank', value, price: UPGRADE_PRICE, name: `Filo: ${cardName(card)}`, desc: `En el truco, el ${cardName(card)} ${rankText(value)}. Solo la próxima partida.` };
       }
       if (envido < BRILLO_ENVIDO) {
         return { type: 'upgrade', key, field: 'envido', value: BRILLO_ENVIDO, price: UPGRADE_PRICE, name: `Brillo: ${cardName(card)}`, desc: `El ${cardName(card)} vale 7 para el envido. Solo la próxima partida.` };
@@ -319,7 +332,7 @@
 
   return {
     RUN_VERSION, MAX_AMULETS, BOSS_EVERY, AMULETS, AMULET_IDS, PERSONALITIES, PERSONALITY_IDS,
-    ArcadeError, cardName, parseKey, isBossRound, rivalFor, combineMods, modsFor, econOf, interestOf, winReward,
+    ArcadeError, cardName, parseKey, rankText, isBossRound, rivalFor, combineMods, modsFor, econOf, interestOf, winReward,
     newRun, matchOptions, withMatch, onEvents, rollShop, rerollCost, cantBuy, buy, sell, sellPrice, reroll, leaveShop,
   };
 });

@@ -251,3 +251,21 @@ test('una run completa contra bots termina sin errores', () => {
   }
   assert.ok(run.round >= 1);
 });
+
+test('las mejoras de truco dicen claro a qué carta equivalen', () => {
+  assert.equal(A.rankText(10), 'mata como un 3');
+  assert.equal(A.rankText(6), 'mata como un 11');
+  assert.equal(A.rankText(13), 'mata como el ancho de basto');
+  assert.equal(A.rankText(13.5), 'le gana a todo menos al ancho de espada');
+  for (let r = 1; r <= 14; r++) assert.match(A.rankText(r), /^mata como /);
+});
+
+test('la oferta de filo explica la nueva fuerza de la carta', () => {
+  for (let seed = 1; seed < 40; seed++) {
+    const run = A.rollShop({ ...A.newRun(seeded(seed)), phase: 'shop' }, seeded(seed + 100));
+    run.shop.items.filter((it) => it.field === 'rank').forEach((it) => {
+      assert.ok(it.desc.includes(A.rankText(it.value)), it.desc);
+      assert.ok(!it.desc.includes('más fuerte'), it.desc);
+    });
+  }
+});

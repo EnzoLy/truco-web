@@ -17,6 +17,8 @@
   const Sound = window.TrucoSoundFactory.createSound({
     AudioContextCtor: window.AudioContext || window.webkitAudioContext,
     storage: (() => { try { return window.localStorage; } catch (err) { return null; } })(),
+    fetchImpl: window.fetch && window.fetch.bind(window),
+    baseUrl: '/sounds',
   });
 
   // ---------- pantallas ----------

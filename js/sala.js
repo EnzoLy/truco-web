@@ -41,6 +41,8 @@
   const Sound = window.TrucoSoundFactory.createSound({
     AudioContextCtor: window.AudioContext || window.webkitAudioContext,
     storage: (() => { try { return window.localStorage; } catch (err) { return null; } })(),
+    fetchImpl: window.fetch && window.fetch.bind(window),
+    baseUrl: '/sounds',
   });
 
   // ---------- red ----------
@@ -842,6 +844,7 @@
   const DUST_COUNT = 8;
   const SPARK_MS = 1000;
   let shoutTimer = null;
+  let queuedHandEnd = null; // fin de mano que espera a que termine el canto en pantalla
 
   const ROLL_TICKS = 14;
   const ROLL_STEP_MS = 60;
@@ -870,7 +873,18 @@
       Sound.play(ev.enabled ? 'quiero' : 'noquiero');
     }, ROLL_STEP_MS);
     clearTimeout(shoutTimer);
-    shoutTimer = setTimeout(() => box.classList.remove('go'), ROLL_HOLD_MS);
+    shoutTimer = setTimeout(endShout, ROLL_HOLD_MS);
+  }
+
+  /** Se va el canto; si un fin de mano lo estaba esperando, recién ahora sube el telón. */
+  function endShout() {
+    clearTimeout(shoutTimer);
+    clearInterval(rollTimer);
+    $('shout').classList.remove('go');
+    if (!queuedHandEnd) return;
+    const ev = queuedHandEnd;
+    queuedHandEnd = null;
+    showHandEnd(ev);
   }
 
   function shout(ev, text, speaker) {
@@ -888,7 +902,7 @@
     void box.offsetWidth;
     box.classList.add('go');
     clearTimeout(shoutTimer);
-    shoutTimer = setTimeout(() => box.classList.remove('go'), SHOUT_MS);
+    shoutTimer = setTimeout(endShout, SHOUT_MS);
   }
 
   function sparks(win) {
@@ -937,7 +951,13 @@
     mazo: 'Se fue al mazo',
   };
 
+  /** Si hay un canto en pantalla (por ejemplo "No quiero" al truco), el telón espera a que termine. */
   function handEnd(ev) {
+    if ($('shout').classList.contains('go')) queuedHandEnd = ev;
+    else showHandEnd(ev);
+  }
+
+  function showHandEnd(ev) {
     const view = snap.view;
     const spectating = Boolean(view.spectator);
     const won = spectating || ev.winner === view.teams[view.me];
@@ -1070,14 +1090,13 @@
     const shoutBox = $('shout');
     const handBox = $('handend');
     if (!shoutBox.classList.contains('go') && !handBox.classList.contains('go')) return;
-    clearTimeout(shoutTimer);
-    clearInterval(rollTimer);
+    document.querySelectorAll('.spark').forEach((s) => s.remove());
+    // Saltar el canto adelanta el telón que lo esperaba; otro toque salta el telón.
+    if (shoutBox.classList.contains('go')) { endShout(); return; }
     clearTimeout(handEndTimer);
     clearInterval(countTimer);
-    shoutBox.classList.remove('go');
     handBox.classList.remove('go');
     handBox.querySelectorAll('.coin').forEach((c) => c.remove());
-    document.querySelectorAll('.spark').forEach((s) => s.remove());
   }
   // En captura y sin frenar el evento: el mismo click sigue a lo que haya debajo (por ejemplo, "Quiero").
   document.addEventListener('pointerdown', skipFx, true);

@@ -115,3 +115,80 @@ test('knock plays one hit per truco level, capped at three', () => {
   sound.play('knock', { level: 9 });
   assert.equal(log.oscillators - before, one * 3);
 });
+
+// ---------- samples (pack de Kenney, CC0) ----------
+
+function sampleAudio() {
+  const { FakeContext, log } = fakeAudio();
+  log.buffers = [];
+  class SampleContext extends FakeContext {
+    createBufferSource() {
+      const src = super.createBufferSource();
+      src.start = () => { if (src.buffer && src.buffer.sample) log.buffers.push(src.buffer.sample); };
+      return src;
+    }
+    decodeAudioData(data) { return Promise.resolve({ sample: data.name, duration: 0.3 }); }
+  }
+  const fetched = [];
+  const fetchImpl = async (url) => {
+    fetched.push(url);
+    return { ok: true, arrayBuffer: async () => ({ name: url }) };
+  };
+  return { SampleContext, log, fetched, fetchImpl };
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+test('carga los samples recien al desbloquear y los usa en vez de sintetizar', async () => {
+  const { SampleContext, log, fetched, fetchImpl } = sampleAudio();
+  const sound = createSound({ AudioContextCtor: SampleContext, storage: memoryStorage(), fetchImpl, baseUrl: 'sounds' });
+  assert.equal(fetched.length, 0);
+  sound.unlock();
+  await flush();
+  assert.ok(fetched.length > 0);
+  assert.ok(fetched.every((u) => /^sounds\/[a-z0-9-]+\.mp3$/.test(u)));
+  const osc = log.oscillators;
+  sound.play('play');
+  assert.equal(log.oscillators, osc, 'no sintetiza si hay sample');
+  assert.match(log.buffers.at(-1), /^sounds\/play-\d\.mp3$/);
+});
+
+test('cada sonido del juego tiene su sample', async () => {
+  const { SampleContext, log, fetchImpl } = sampleAudio();
+  const sound = createSound({ AudioContextCtor: SampleContext, storage: memoryStorage(), fetchImpl, baseUrl: 'sounds' });
+  sound.unlock();
+  await flush();
+  for (const name of sound.names) {
+    const before = log.buffers.length;
+    sound.play(name);
+    assert.ok(log.buffers.length > before, name);
+  }
+});
+
+test('el truco con samples suena una ficha por nivel, hasta tres', async () => {
+  const { SampleContext, log, fetchImpl } = sampleAudio();
+  const sound = createSound({ AudioContextCtor: SampleContext, storage: memoryStorage(), fetchImpl, baseUrl: 'sounds' });
+  sound.unlock();
+  await flush();
+  const before = log.buffers.length;
+  sound.play('knock', { level: 9 });
+  assert.equal(log.buffers.length - before, 3);
+});
+
+test('si un sample no carga, ese sonido vuelve al sintetizado', async () => {
+  const { SampleContext, log } = sampleAudio();
+  const fetchImpl = async () => ({ ok: false, status: 404 });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const sound = createSound({ AudioContextCtor: SampleContext, storage: memoryStorage(), fetchImpl, baseUrl: 'sounds' });
+    sound.unlock();
+    await flush();
+    await flush();
+    const osc = log.oscillators;
+    sound.play('play');
+    assert.ok(log.oscillators > osc);
+  } finally {
+    console.warn = warn;
+  }
+});

@@ -48,6 +48,8 @@
     const Sound = window.TrucoSoundFactory.createSound({
       AudioContextCtor: window.AudioContext || window.webkitAudioContext,
       storage: (() => { try { return window.localStorage; } catch (err) { return null; } })(),
+      fetchImpl: window.fetch && window.fetch.bind(window),
+      baseUrl: '/sounds',
     });
 
     let bot = opts.bot || new window.TrucoBot.Bot();
@@ -85,11 +87,40 @@
     function cardFace(card, asButton) {
       const node = el(asButton ? 'button' : 'div', card.up ? 'card upgraded' : 'card');
       if (asButton) node.type = 'button';
-      const label = card.up ? `${cardName(card)} (mejorada)` : cardName(card);
-      node.title = label;
+      const notes = upgradeNotes(card.up);
+      const label = notes.length ? `${cardName(card)}. ${notes.map((n) => n.text).join('. ')}` : cardName(card);
+      if (!notes.length) node.title = label; // con mejoras, el detalle lo da el tooltip de cada icono
       node.setAttribute('aria-label', label);
       node.append(cardImage(window.CardArt.url(card), cardName(card)));
+      if (notes.length) node.append(upgradeBadges(notes));
       return node;
+    }
+
+    // Iconos de mejora dentro de la carta: espada = truco, chispa = envido.
+    const ICONS = {
+      rank: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 3H21v6.5L10 20.5l-2-2L19 7.5V5h-2.5L5.5 16l-2-2zM4 17.5l2.5 2.5L4 22.5 1.5 20z"/></svg>',
+      envido: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5l2.6 7.9 7.9 2.6-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z"/></svg>',
+    };
+
+    const rankPhrase = (rank) => (window.TrucoArcade && window.TrucoArcade.rankText ? window.TrucoArcade.rankText(rank) : 'mata más fuerte');
+
+    function upgradeNotes(up) {
+      if (!up) return [];
+      const notes = [];
+      if (typeof up.rank === 'number') notes.push({ kind: 'rank', text: `Mejora de truco: ${rankPhrase(up.rank)}` });
+      if (typeof up.envido === 'number') notes.push({ kind: 'envido', text: `Mejora de envido: vale ${up.envido}` });
+      return notes;
+    }
+
+    function upgradeBadges(notes) {
+      const box = el('span', 'up-badges');
+      notes.forEach((n) => {
+        const badge = el('span', `up-badge up-${n.kind}`);
+        badge.innerHTML = ICONS[n.kind];
+        fx.tooltip(badge, n.text);
+        box.append(badge);
+      });
+      return box;
     }
 
     const cardBack = () => {
@@ -338,8 +369,8 @@
       tag.setAttribute('aria-hidden', 'true');
       face.append(tag);
       const caption = `${who(p)} · Baza ${i + 1}`;
-      face.title = `${caption}: ${cardName(card)}`;
-      face.setAttribute('aria-label', `${caption}: ${cardName(card)}`);
+      if (!card.up) face.title = `${caption}: ${cardName(card)}`;
+      face.setAttribute('aria-label', `${caption}: ${face.getAttribute('aria-label')}`);
       fx.peekable(face, { src: window.CardArt.url(card), name: cardName(card), caption });
       const key = playKey(p, i);
       if (!seenPlays.has(key)) {
@@ -476,9 +507,8 @@
       if (state.phase === 'hand-over') {
         const r = state.handResult;
         s.append(el('span', '', `${r.winner === HUMAN ? 'Ganaste' : `Ganó ${names.ref}`} la mano: +${r.points}`));
-        const next = button('Repartir', 'primary', dealNext);
-        s.append(next);
-        next.focus();
+        s.append(dealButton());
+        scheduleAutoDeal();
         return;
       }
       if (state.phase === 'game-over') return;
@@ -529,6 +559,7 @@
       renderStatus();
       renderInsights();
       renderLog();
+      fx.dropStaleTip();
       const myTurn = state.turn === HUMAN && ['play', 'respond-truco', 'respond-envido'].includes(state.phase);
       $('seat-you').classList.toggle('turn', myTurn);
       if (myTurn && !wasMyTurn) Sound.play('turn', { delay: 0.35 });
@@ -655,7 +686,59 @@
       apply(BOT, action);
     }
 
+    // Reparto automático: cuando se va el telón de fin de mano, una barra llena el botón y reparte sola.
+    // Tocar el botón reparte al instante.
+    const AUTO_DEAL_MS = 3000;
+    const COUNTDOWN_TICK_MS = 200;
+    let autoDeal = null; // { handNo, startedAt, timer, ticker }
+
+    function dealButton() {
+      const b = button('', 'primary deal-btn', () => dealNext());
+      const fill = el('span', 'deal-fill');
+      fill.setAttribute('aria-hidden', 'true');
+      b.append(fill, el('span', 'deal-label', 'Repartir'), el('span', 'deal-count'));
+      b.style.setProperty('--deal-ms', `${AUTO_DEAL_MS}ms`);
+      if (autoDeal && autoDeal.startedAt) markCounting(b);
+      setTimeout(() => b.focus(), 0);
+      return b;
+    }
+
+    /** Pinta la cuenta regresiva en el botón; si se redibuja a mitad, la barra sigue desde donde iba. */
+    function markCounting(b) {
+      const elapsed = Date.now() - autoDeal.startedAt;
+      b.style.setProperty('--elapsed', `${elapsed}ms`);
+      b.classList.add('counting');
+      b.querySelector('.deal-count').textContent = String(Math.max(1, Math.ceil((AUTO_DEAL_MS - elapsed) / 1000)));
+    }
+
+    function scheduleAutoDeal() {
+      if (autoDeal && autoDeal.handNo === state.handNo) return;
+      cancelAutoDeal();
+      const handNo = state.handNo;
+      autoDeal = { handNo, startedAt: 0, timer: null, ticker: null };
+      fx.afterCurtain(() => {
+        if (!autoDeal || autoDeal.handNo !== handNo || state.phase !== 'hand-over') return;
+        autoDeal.startedAt = Date.now();
+        autoDeal.timer = setTimeout(() => dealNext(), AUTO_DEAL_MS);
+        autoDeal.ticker = setInterval(() => {
+          const b = document.querySelector('#status .deal-btn');
+          if (b) markCounting(b);
+        }, COUNTDOWN_TICK_MS);
+        const b = document.querySelector('#status .deal-btn');
+        if (b) markCounting(b);
+      });
+    }
+
+    function cancelAutoDeal() {
+      if (!autoDeal) return;
+      clearTimeout(autoDeal.timer);
+      clearInterval(autoDeal.ticker);
+      autoDeal = null;
+    }
+
     function dealNext() {
+      cancelAutoDeal();
+      if (state.phase !== 'hand-over' && state.phase !== 'idle') return;
       const r = dealHand(state);
       state = r.state;
       ingest(r.events);

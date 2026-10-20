@@ -71,7 +71,7 @@
   function upgradeText(key, up) {
     const card = A.parseKey(key);
     const parts = [];
-    if (typeof up.rank === 'number') parts.push('más fuerte en el truco');
+    if (typeof up.rank === 'number') parts.push(`en el truco ${A.rankText(up.rank)}`);
     if (typeof up.envido === 'number') parts.push(`vale ${up.envido} de envido`);
     return `${A.cardName(card)}: ${parts.join(' y ')}`;
   }

@@ -1,4 +1,6 @@
-/* Sonidos sintetizados con Web Audio: sin archivos de audio ni dependencias.
+/* Sonidos de la mesa con Web Audio.
+   Con fetchImpl + baseUrl usa samples reales (cartas y fichas del pack "Casino Audio" de Kenney, CC0,
+   ver sounds/LICENSE-kenney.txt); mientras cargan, o si fallan, suena la version sintetizada.
    El contexto se crea recien con el primer gesto del usuario (politica de autoplay). */
 (function (root) {
   'use strict';
@@ -7,16 +9,79 @@
   const MASTER_GAIN = 0.55;
   const NOISE_SECONDS = 1;
   const SILENCE = 0.0001;
+  const MAX_KNOCKS = 3;
+  const KNOCK_STEP_S = 0.15;
 
   // Notas en Hz.
   const NOTE = { g4: 392, c5: 523.25, e5: 659.25, g5: 783.99, c6: 1046.5, eb4: 311.13, f4: 349.23, c4: 261.63 };
 
-  function createSound({ AudioContextCtor, storage }) {
+  /** Samples por sonido: se elige una variante al azar para que no suene repetido. */
+  const SAMPLES = {
+    select: { files: ['select'], gain: 0.6 },
+    deal: { files: ['deal-1', 'deal-2', 'deal-3', 'deal-4'], gain: 0.9 },
+    play: { files: ['play-1', 'play-2', 'play-4'], gain: 1.2 },
+    knock: { files: ['truco-1', 'truco-4', 'truco-6'], gain: 1.1 }, // una ficha a la mesa por nivel de truco
+    envido: { files: ['envido'], gain: 0.8 },
+    quiero: { files: ['quiero'], gain: 0.8 },
+    noquiero: { files: ['noquiero'], gain: 0.8 },
+    mazo: { files: ['mazo'], gain: 1 },
+    trickWin: { files: ['trick-win-1', 'trick-win-2', 'trick-win-3'], gain: 1.1 },
+    trickLoss: { files: ['trick-loss'], gain: 0.9 },
+    point: { files: ['point-1', 'point-3'], gain: 1 },
+    turn: { files: ['turn'], gain: 0.5 },
+    win: { files: ['win'], gain: 0.9 },
+    lose: { files: ['lose'], gain: 0.8 },
+  };
+
+  function createSound({ AudioContextCtor, storage, fetchImpl, baseUrl }) {
     let ctx = null;
     let master = null;
     let noise = null;
     let muted = readMuted();
     let unlocked = false;
+    const buffers = new Map(); // archivo -> AudioBuffer ya decodificado
+    let loading = false;
+
+    /** Baja y decodifica todos los samples una sola vez. Los que fallan quedan con el sintetizado. */
+    function loadSamples() {
+      if (loading || !fetchImpl || !baseUrl || !ctx || !ctx.decodeAudioData) return;
+      loading = true;
+      const files = [...new Set(Object.values(SAMPLES).flatMap((s) => s.files))];
+      files.forEach((file) => {
+        const url = `${baseUrl}/${file}.mp3`;
+        Promise.resolve()
+          .then(() => fetchImpl(url))
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.arrayBuffer();
+          })
+          .then((data) => ctx.decodeAudioData(data))
+          .then((buffer) => buffers.set(file, buffer))
+          .catch((err) => console.warn(`Sonido ${url} no cargó, uso el sintetizado`, err));
+      });
+    }
+
+    function playSample(at, buffer, gain) {
+      const src = ctx.createBufferSource();
+      const amp = ctx.createGain();
+      src.buffer = buffer;
+      amp.gain.value = gain;
+      src.connect(amp).connect(master);
+      src.start(at);
+    }
+
+    /** true si lo pudo tocar con samples. */
+    function trySample(name, at, opts) {
+      const def = SAMPLES[name];
+      const ready = def ? def.files.filter((f) => buffers.has(f)) : [];
+      if (!ready.length) return false;
+      const hits = name === 'knock' ? Math.min(Math.max(opts.level || 1, 1), MAX_KNOCKS) : 1;
+      for (let i = 0; i < hits; i++) {
+        const file = ready[(Math.floor(Math.random() * ready.length) + i) % ready.length];
+        playSample(at + i * KNOCK_STEP_S, buffers.get(file), def.gain);
+      }
+      return true;
+    }
 
     function readMuted() {
       try { return storage && storage.getItem(STORAGE_KEY) === 'off'; } catch (err) { return false; }
@@ -98,7 +163,7 @@
       },
       // Truco: un golpe en la mesa por cada nivel (truco, retruco, vale cuatro).
       knock: (at, { level = 1 } = {}) => {
-        for (let i = 0; i < Math.min(Math.max(level, 1), 3); i++) knock(at + i * 0.15);
+        for (let i = 0; i < Math.min(Math.max(level, 1), MAX_KNOCKS); i++) knock(at + i * KNOCK_STEP_S);
       },
       envido: (at) => [880, 1318.5, 1760].forEach((freq, i) => tone(at, { freq, dur: 0.7 - i * 0.12, gain: 0.17 })),
       quiero: (at) => arpeggio(at, [NOTE.c5, NOTE.g5], { step: 0.1, dur: 0.18, gain: 0.16 }),
@@ -125,12 +190,13 @@
       play(name, opts = {}) {
         const sound = SOUNDS[name];
         if (!unlocked || muted || !sound || !ensure()) return;
-        sound(ctx.currentTime + (opts.delay || 0), opts);
+        const at = ctx.currentTime + (opts.delay || 0);
+        if (!trySample(name, at, opts)) sound(at, opts);
       },
       /** Llamar desde un gesto del usuario. Antes de eso no suena nada, y lo programado antes se descarta. */
       unlock() {
         unlocked = true;
-        ensure();
+        if (ensure()) loadSamples();
       },
       isMuted: () => muted,
       setMuted(value) {

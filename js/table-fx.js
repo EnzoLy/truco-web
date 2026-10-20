@@ -18,6 +18,8 @@
   const PEEK_WIDTH = 176;
   const PEEK_GAP = 10;
   const PEEK_MARGIN = 8;
+  const TIP_GAP = 8;
+  const TIP_MARGIN = 8;
 
   function create() {
     const $ = (id) => document.getElementById(id);
@@ -32,8 +34,11 @@
     let handEndTimer = null;
     let countTimer = null;
     let waiting = []; // lo que espera a que se vaya el telón (el cartel de fin de partida)
+    let queuedCurtain = null; // telón que espera a que termine el canto en pantalla
 
-    /** Cartel gigante: kind = truco | envido | quiero | noquiero; level agranda el truco. */
+    const shouting = () => Boolean($('shout') && $('shout').classList.contains('go'));
+
+    /** Cartel gigante: kind = truco | envido | quiero | noquiero | flor; level agranda el truco. */
     function shout({ kind, text, who = '', level = 1 }) {
       const box = $('shout');
       if (!box || !kind || !text) return;
@@ -42,7 +47,18 @@
       void box.offsetWidth;
       box.classList.add('go');
       clearTimeout(shoutTimer);
-      shoutTimer = setTimeout(() => box.classList.remove('go'), SHOUT_MS);
+      shoutTimer = setTimeout(endShout, SHOUT_MS);
+    }
+
+    /** Se va el canto; si un fin de mano lo estaba esperando, recién ahora sube el telón. */
+    function endShout() {
+      clearTimeout(shoutTimer);
+      const box = $('shout');
+      if (box) box.classList.remove('go');
+      if (!queuedCurtain) return;
+      const opts = queuedCurtain;
+      queuedCurtain = null;
+      showCurtain(opts);
     }
 
     function sparks(win) {
@@ -79,8 +95,14 @@
       }
     }
 
-    /** Telón de fin de mano: título, puntos contando y lluvia de monedas si ganaste. */
-    function handEnd({ won, title, why = '', points }) {
+    /** Telón de fin de mano: título, puntos contando y lluvia de monedas si ganaste.
+     * Si hay un canto en pantalla (por ejemplo "No quiero" al truco), espera a que termine para no encimarse. */
+    function handEnd(opts) {
+      if (shouting()) queuedCurtain = opts;
+      else showCurtain(opts);
+    }
+
+    function showCurtain({ won, title, why = '', points }) {
       const box = $('handend');
       if (!box) return;
       box.className = `handend ${won ? 'win' : 'loss'}`;
@@ -128,7 +150,7 @@
     /** Corre fn cuando no hay telón en pantalla (enseguida si no hay). */
     function afterCurtain(fn) {
       const box = $('handend');
-      if (box && box.classList.contains('go')) waiting.push(fn);
+      if (queuedCurtain || (box && box.classList.contains('go'))) waiting.push(fn);
       else fn();
     }
 
@@ -145,15 +167,12 @@
 
     /** Un toque en cualquier lado salta el canto o el telón que esté en pantalla. */
     function skip() {
-      const shoutBox = $('shout');
       const handBox = $('handend');
-      const shouting = shoutBox && shoutBox.classList.contains('go');
       const curtain = handBox && handBox.classList.contains('go');
-      if (!shouting && !curtain) return;
-      clearTimeout(shoutTimer);
-      if (shoutBox) shoutBox.classList.remove('go');
       document.querySelectorAll('.spark').forEach((s) => s.remove());
-      if (curtain) closeCurtain();
+      // Saltar el canto adelanta el telón que lo esperaba; otro toque salta el telón.
+      if (shouting()) endShout();
+      else if (curtain) closeCurtain();
     }
     // En captura y sin frenar el evento: el mismo toque sigue a lo que haya debajo (por ejemplo, "Quiero").
     document.addEventListener('pointerdown', skip, true);
@@ -198,7 +217,53 @@
       node.addEventListener('click', (e) => { e.stopPropagation(); peekPinned = true; showPeek(node, info); });
     }
 
-    return { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip, peekable };
+    // Tooltip de los iconos de mejora: hover con mouse, o tocar el icono en el celular (queda hasta tocar otra cosa).
+    let tipNode = null;
+    let tipAnchor = null;
+
+    function showTip(anchor, text) {
+      if (!tipNode) {
+        tipNode = el('div', 'up-tip');
+        tipNode.setAttribute('role', 'tooltip');
+        document.body.append(tipNode);
+      }
+      tipNode.textContent = text;
+      tipNode.hidden = false;
+      tipAnchor = anchor;
+      const rect = anchor.getBoundingClientRect();
+      const box = tipNode.getBoundingClientRect();
+      const left = Math.min(Math.max(rect.left + rect.width / 2 - box.width / 2, TIP_MARGIN), innerWidth - box.width - TIP_MARGIN);
+      const above = rect.top - box.height - TIP_GAP;
+      tipNode.style.left = `${left}px`;
+      tipNode.style.top = `${above >= TIP_MARGIN ? above : rect.bottom + TIP_GAP}px`;
+    }
+
+    function hideTip() {
+      tipAnchor = null;
+      if (tipNode) tipNode.hidden = true;
+    }
+    document.addEventListener('click', hideTip);
+    document.addEventListener('scroll', hideTip, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+
+    /** Le pone tooltip a un icono. Tocarlo no selecciona ni tira la carta que lo contiene. */
+    function tooltip(node, text) {
+      node.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(node, text); });
+      node.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hideTip(); });
+      node.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (tipAnchor === node) hideTip();
+        else showTip(node, text);
+      });
+    }
+
+    /** Si la carta del icono se redibujó (jugada del rival, cambio de turno), el tooltip no queda flotando. */
+    function dropStaleTip() {
+      if (tipAnchor && !tipAnchor.isConnected) hideTip();
+    }
+
+    return { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip, peekable, tooltip, dropStaleTip };
   }
 
   window.TrucoTableFx = { create };

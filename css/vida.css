@@ -113,6 +113,15 @@
 @keyframes coin-fall { to { transform: translateY(112vh) rotateY(var(--r)) rotate(40deg); } }
 @media (prefers-reduced-motion: reduce) { .handend.go, .handend.go .handend-card, .handend.go .handend-points, .coin { animation: none; } .handend.go { opacity: 1; } .coin { display: none; } }
 
+/* reparto automático: la barra llena el botón "Repartir" (solo transform: no repinta) */
+.deal-btn { position: relative; overflow: hidden; isolation: isolate; gap: 8px; }
+.deal-fill { position: absolute; inset: 0; z-index: -1; background: rgba(255, 255, 255, 0.4); transform: scaleX(0); transform-origin: left center; pointer-events: none; }
+.deal-btn.counting .deal-fill { animation: deal-fill var(--deal-ms, 3000ms) linear forwards; animation-delay: calc(var(--elapsed, 0ms) * -1); }
+@keyframes deal-fill { to { transform: scaleX(1); } }
+.deal-count { min-width: 1ch; font-variant-numeric: tabular-nums; opacity: 0.75; }
+.deal-count:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .deal-btn.counting .deal-fill { animation: none; transform: none; opacity: 0.25; } }
+
 /* flor: cartel de la consulta al mazo y chip de estado */
 .shout.flor { --bg: var(--porcelain); --fg: var(--lacre); --tint: rgba(247, 241, 227, 0.4); }
 .shout.flor .shout-text { border-color: var(--lacre); }
