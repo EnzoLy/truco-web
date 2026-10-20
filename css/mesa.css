@@ -471,6 +471,17 @@ button.card:disabled { cursor: default; }
   to { transform: translate3d(calc(var(--dx) * 1vw), 108vh, 0) rotate(calc(var(--r) * 1turn)); opacity: 0.9; }
 }
 
+/* celular: la mesa de juego ocupa toda la pantalla, sin marco de chapa; los paneles de abajo siguen siendo tarjetas */
+@media (max-width: 599px) {
+  .wall .plate.game {
+    margin-inline: calc(-1 * max(10px, env(safe-area-inset-left, 0px))) calc(-1 * max(10px, env(safe-area-inset-right, 0px)));
+    margin-top: -10px;
+    min-height: 100dvh;
+    padding: 12px max(10px, env(safe-area-inset-right, 0px)) 16px max(10px, env(safe-area-inset-left, 0px));
+    border: 0; border-radius: 0; box-shadow: none;
+  }
+}
+
 /* ---------- pantallas medianas y escritorio ---------- */
 @media (min-width: 600px) {
   body { font-size: 17px; padding-block: 22px 40px; }
@@ -495,5 +506,6 @@ button.card:disabled { cursor: default; }
 @media (max-width: 420px) {
   .plate-head h1 { font-size: 30px; }
   .deck-link { padding: 0 12px; font-size: 14px; }
-  .tools { gap: 6px; }
+  .tools { gap: 6px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+  .plate-head { flex-wrap: wrap; }
 }

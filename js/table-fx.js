@@ -5,6 +5,9 @@
 (function () {
   'use strict';
 
+  /** Letras de la palabra más larga del canto: el cartel achica la letra para que entre (ver .shout-text en vida.css). */
+  const longestWord = (text) => Math.max(1, ...String(text).split(/\s+/).map((w) => Array.from(w).length));
+
   const SHOUT_MS = 1600;
   const DUST_COUNT = 8;
   const SPARK_MS = 1000;
@@ -42,6 +45,7 @@
       if (!box || !kind || !text) return;
       box.className = `shout ${kind} lvl${Math.min(Math.max(level, 1), 3)}`;
       $('shout-text').replaceChildren(...(who ? [el('span', 'shout-who', who)] : []), document.createTextNode(text));
+      $('shout-text').style.setProperty('--word', longestWord(text));
       void box.offsetWidth;
       box.classList.add('go');
       clearTimeout(shoutTimer);

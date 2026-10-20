@@ -40,6 +40,27 @@
 }
 @keyframes thud { 0% { opacity: 0.9; transform: scale(0.85); } 100% { opacity: 0; transform: scale(1.5, 1.35); } }
 
+/* las cartas de cada baza quedan abiertas en abanico, como en la mano, para ver el número y el palo de la
+   esquina. Usa "rotate" (no transform) para sumarse a las animaciones de tirar y ganar. */
+.stack .card { rotate: var(--fan, 0deg); transform-origin: 50% 115%; }
+.stack { padding-inline: calc(var(--cw) * 0.14); }
+.stack .card:first-child:nth-last-child(2) { --fan: -8deg; }
+.stack .card:nth-child(2):last-child { --fan: 8deg; }
+.stack .card:first-child:nth-last-child(3) { --fan: -10deg; }
+.stack .card:nth-child(2):nth-last-child(2) { --fan: 0deg; }
+.stack .card:nth-child(3):last-child { --fan: 10deg; }
+.stack .card:first-child:nth-last-child(4) { --fan: -12deg; }
+.stack .card:nth-child(2):nth-last-child(3) { --fan: -4deg; }
+.stack .card:nth-child(3):nth-last-child(2) { --fan: 4deg; }
+.stack .card:nth-child(4):last-child { --fan: 12deg; }
+/* con el mouse sobre una carta jugada, esa pasa adelante y las demás de la mesa se apagan. Se apaga la imagen
+   (no la carta) porque la animación de tirar deja fijada la opacidad de la carta. */
+@media (hover: hover) and (pointer: fine) {
+  .stack .card img, .stack .card .who { transition: opacity 160ms var(--ease-out); }
+  .stack .card:hover { z-index: 4; }
+  .tricks:has(.stack .card:hover) .stack .card:not(:hover) :is(img, .who) { opacity: 0.3; }
+}
+
 /* turno de los rivales: aro de luz */
 .seat-bot.thinking { border-radius: var(--r); box-shadow: 0 0 0 2px var(--signal), 0 0 14px rgba(230, 184, 60, 0.3); }
 
@@ -53,7 +74,11 @@
 @keyframes flare { 0% { opacity: 0.55; } 100% { opacity: 0; } }
 .shout-text {
   position: relative; max-width: 92vw; padding: 0.1em 0.45em 0.18em; text-align: center; text-transform: uppercase;
-  font-family: var(--display); font-size: clamp(44px, 15vw, 120px); line-height: 1; letter-spacing: 0.02em;
+  /* el tamaño sale del nivel (--fs) pero nunca pasa el que hace entrar la palabra más larga (--word letras):
+     en esta fuente cada mayúscula mide ~0,8em y el padding suma ~0,9em */
+  --fs: clamp(40px, 14vw, 96px);
+  font-family: var(--display); font-size: min(var(--fs), calc(84vw / (var(--word, 7) * 0.8 + 0.9)));
+  line-height: 1; letter-spacing: 0.02em; overflow-wrap: normal;
   color: var(--fg, #fff); background: var(--bg, var(--lacre)); border: 4px solid var(--porcelain); border-radius: 14px;
   box-shadow: 8px 10px 0 var(--wall); opacity: 0; transform: rotate(-4deg);
 }
@@ -72,8 +97,8 @@
 .shout.quiero { --bg: var(--ok); --fg: var(--porcelain); --tint: rgba(23, 121, 74, 0.5); }
 .shout.noquiero { --bg: var(--enamel-hi); --fg: var(--porcelain-dim); --tint: rgba(0, 0, 0, 0.5); }
 .shout.noquiero .shout-text { border-color: var(--porcelain-dim); }
-.shout.lvl2 .shout-text { font-size: clamp(52px, 18vw, 140px); }
-.shout.lvl3 .shout-text { font-size: clamp(54px, 19vw, 150px); animation-duration: 1500ms; }
+.shout.lvl2 .shout-text { --fs: clamp(44px, 15vw, 104px); }
+.shout.lvl3 .shout-text { --fs: clamp(46px, 16vw, 112px); animation-duration: 1500ms; }
 .shout.lvl3 .shout-text::after { content: ""; position: absolute; inset: -14px; border-radius: 20px; border: 3px solid var(--signal); animation: ring 700ms var(--ease-out) 250ms both; }
 
 /* chispas al ganar una baza */

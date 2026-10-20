@@ -111,8 +111,9 @@
 .stack .card { transition: none; }
 .stack .card.drop { animation: landing 360ms var(--ease-out) both; }
 @keyframes landing { from { transform: translateY(-46px) scale(1.18) rotate(-6deg); opacity: 0; } 60% { opacity: 1; } }
+/* inicial de quien tiró: abajo a la izquierda, la esquina vacía del naipe (el número va arriba a la izquierda) */
 .who {
-  position: absolute; top: 3px; left: 3px; z-index: 1; display: grid; place-items: center;
+  position: absolute; bottom: -4px; left: -4px; z-index: 1; display: grid; place-items: center;
   width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 800; line-height: 1;
   box-shadow: 0 0 0 1px var(--wall);
 }
@@ -214,10 +215,10 @@
 .baza-legend { display: flex; justify-content: center; gap: 12px; font-size: 12px; font-weight: 700; color: var(--porcelain-dim); }
 .baza-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; vertical-align: -1px; }
 
-/* La carta que va ganando la baza en juego: etiqueta "Gana" y borde que late. */
-.stack .card.leading { z-index: 2; }
+/* La carta que va ganando la baza en juego: etiqueta "Gana" arriba y borde que late. No se pone encima de
+   las demás para no taparles el número; la etiqueta va por arriba de la carta, donde nada la cubre. */
 .stack .card.leading::after {
-  content: attr(data-lead); position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); z-index: 3;
+  content: attr(data-lead); position: absolute; left: -2px; top: -13px; z-index: 3;
   padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
   background: var(--lead, var(--porcelain)); color: var(--ink); box-shadow: 0 1px 0 var(--wall);
 }

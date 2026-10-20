@@ -7,6 +7,9 @@
 (function () {
   'use strict';
 
+  /** Letras de la palabra más larga del canto: el cartel achica la letra para que entre (ver .shout-text en vida.css). */
+  const longestWord = (text) => Math.max(1, ...String(text).split(/\s+/).map((w) => Array.from(w).length));
+
   const T = window.SalaText;
   const BUBBLE_MS = 2200;
   const NOTICE_MS = 5000;
@@ -554,7 +557,10 @@
       box.className = 'shout flor lvl1 long';
       const who = T.nameOf(snap.seats, ev.by, viewer());
       const text = $('shout-text');
-      const render = (label) => text.replaceChildren(el('span', 'shout-who', `${who} le pregunta al mazo`), document.createTextNode(label));
+      const render = (label) => {
+        text.replaceChildren(el('span', 'shout-who', `${who} le pregunta al mazo`), document.createTextNode(label));
+        text.style.setProperty('--word', longestWord(label));
+      };
       render('?');
       void box.offsetWidth;
       box.classList.add('go');
@@ -596,6 +602,7 @@
       box.className = `shout ${kind} lvl${level}`;
       const who = speaker !== undefined ? T.nameOf(snap.seats, speaker, viewer()) : '';
       $('shout-text').replaceChildren(...(who ? [el('span', 'shout-who', who)] : []), document.createTextNode(text));
+      $('shout-text').style.setProperty('--word', longestWord(text));
       void box.offsetWidth;
       box.classList.add('go');
       clearTimeout(shoutTimer);
