@@ -339,7 +339,7 @@
       const caption = `${who(p)} · Baza ${i + 1}`;
       if (!card.up) face.title = `${caption}: ${cardName(card)}`;
       face.setAttribute('aria-label', `${caption}: ${face.getAttribute('aria-label')}`);
-      fx.peekable(face, { src: window.CardArt.url(card), name: cardName(card), caption });
+      window.TrucoCardBadges.peekable(face, { card, name: cardName(card), caption });
       const key = playKey(p, i);
       if (!seenPlays.has(key)) {
         seenPlays.add(key);

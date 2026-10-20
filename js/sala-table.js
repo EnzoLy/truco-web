@@ -221,39 +221,6 @@
       return stillHeld ? [one.card] : [];
     }
 
-    // Ver en grande una carta jugada: hover con mouse, o tocarla (queda hasta tocar de nuevo).
-    const PEEK_WIDTH = 176;
-    const PEEK_GAP = 10;
-    const PEEK_MARGIN = 8;
-    let peekPinned = false;
-    let peekNode = null;
-
-    function showPeek(anchor, card, caption) {
-      if (!peekNode) {
-        peekNode = el('div', 'peek');
-        peekNode.setAttribute('role', 'status');
-        document.body.append(peekNode);
-      }
-      const img = cardImage(window.CardArt.url(card), cardName(card));
-      peekNode.replaceChildren(img, el('strong', '', cardName(card)), el('span', '', caption));
-      peekNode.style.width = `${PEEK_WIDTH}px`;
-      peekNode.hidden = false;
-      const rect = anchor.getBoundingClientRect();
-      const height = peekNode.getBoundingClientRect().height || PEEK_WIDTH * 1.9;
-      const left = Math.min(Math.max(rect.left + rect.width / 2 - PEEK_WIDTH / 2, PEEK_MARGIN), innerWidth - PEEK_WIDTH - PEEK_MARGIN);
-      const above = rect.top - height - PEEK_GAP;
-      peekNode.style.left = `${left}px`;
-      peekNode.style.top = `${above >= PEEK_MARGIN ? above : Math.min(rect.bottom + PEEK_GAP, innerHeight - height - PEEK_MARGIN)}px`;
-    }
-
-    function hidePeek() {
-      peekPinned = false;
-      if (peekNode) peekNode.hidden = true;
-    }
-
-    document.addEventListener('click', hidePeek);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePeek(); });
-
     /** Quien va ganando la baza en juego: la carta mas alta de las ya tiradas (null si empatan equipos rivales). */
     function currentLeader(view) {
       const trick = view.results.length;
@@ -292,7 +259,6 @@
           const card = view.played[seat][i];
           if (!card) return;
           const face = cardFace(card, true);
-          face.classList.add('peekable');
           face.classList.add(`role-${roleOf(seat)}`);
           const isLeading = leading && leading.trick === i && leading.seat === seat;
           if (isLeading) { face.classList.add('leading'); face.dataset.lead = 'Gana'; }
@@ -302,9 +268,7 @@
           const caption = `${seatName(seat)} · Baza ${i + 1}`;
           face.title = `${caption}: ${cardName(card)}`;
           face.setAttribute('aria-label', `${caption}: ${cardName(card)}`);
-          face.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse' && !peekPinned) showPeek(face, card, caption); });
-          face.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !peekPinned) hidePeek(); });
-          face.addEventListener('click', (e) => { e.stopPropagation(); peekPinned = true; showPeek(face, card, caption); });
+          window.TrucoCardBadges.peekable(face, { card, name: cardName(card), caption });
           const key = `${view.handNo}-${seat}-${i}`;
           if (!seenPlays.has(key)) {
             seenPlays.add(key);

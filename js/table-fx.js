@@ -1,7 +1,7 @@
 /* Efectos de la mesa del modo bot y del arcade, los mismos que en las salas:
  * cartel de canto, chispas al ganar una baza, polvo sobre el paño, telón de fin de mano y golpe en la mesa.
  * Solo animan transform y opacity (ver vida.css), para no trabar celulares.
- * TrucoTableFx.create() -> { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip, peekable } */
+ * TrucoTableFx.create() -> { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip } */
 (function () {
   'use strict';
 
@@ -18,9 +18,6 @@
   const COUNT_STEP_MS = 140;
   const COIN_COUNT = 28;
   const KNOCK_MS = 150;
-  const PEEK_WIDTH = 176;
-  const PEEK_GAP = 10;
-  const PEEK_MARGIN = 8;
 
   function create() {
     const $ = (id) => document.getElementById(id);
@@ -180,46 +177,7 @@
     document.addEventListener('pointerdown', skip, true);
     document.addEventListener('keydown', skip, true);
 
-    // Ver en grande una carta jugada: hover con mouse, o tocarla (queda hasta tocar de nuevo).
-    let peekNode = null;
-    let peekPinned = false;
-
-    function showPeek(anchor, { src, name, caption }) {
-      if (!peekNode) {
-        peekNode = el('div', 'peek');
-        peekNode.setAttribute('role', 'status');
-        document.body.append(peekNode);
-      }
-      const img = document.createElement('img');
-      img.src = src;
-      img.alt = name;
-      peekNode.replaceChildren(img, el('strong', '', name), el('span', '', caption));
-      peekNode.style.width = `${PEEK_WIDTH}px`;
-      peekNode.hidden = false;
-      const rect = anchor.getBoundingClientRect();
-      const height = peekNode.getBoundingClientRect().height || PEEK_WIDTH * 1.9;
-      const left = Math.min(Math.max(rect.left + rect.width / 2 - PEEK_WIDTH / 2, PEEK_MARGIN), innerWidth - PEEK_WIDTH - PEEK_MARGIN);
-      const above = rect.top - height - PEEK_GAP;
-      peekNode.style.left = `${left}px`;
-      peekNode.style.top = `${above >= PEEK_MARGIN ? above : Math.min(rect.bottom + PEEK_GAP, innerHeight - height - PEEK_MARGIN)}px`;
-    }
-
-    function hidePeek() {
-      peekPinned = false;
-      if (peekNode) peekNode.hidden = true;
-    }
-    document.addEventListener('click', hidePeek);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePeek(); });
-
-    /** Hace que una carta de la mesa se pueda ver en grande. */
-    function peekable(node, info) {
-      node.classList.add('peekable');
-      node.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse' && !peekPinned) showPeek(node, info); });
-      node.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && !peekPinned) hidePeek(); });
-      node.addEventListener('click', (e) => { e.stopPropagation(); peekPinned = true; showPeek(node, info); });
-    }
-
-    return { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip, peekable };
+    return { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip };
   }
 
   window.TrucoTableFx = { create };

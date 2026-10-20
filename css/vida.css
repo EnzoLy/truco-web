@@ -8,15 +8,11 @@
   background: radial-gradient(60% 42% at 50% 38%, rgba(230, 184, 60, 0.13), transparent 70%), radial-gradient(120% 80% at 50% 120%, rgba(200, 38, 31, 0.16), transparent 60%);
 }
 
-/* el centro es un paño: fieltro, costura dorada, viñeta y polvo flotando */
+/* el centro es un paño: fieltro, viñeta y polvo flotando */
 .sala .center {
   position: relative; overflow: hidden; isolation: isolate; border: 3px solid var(--wall);
   background: radial-gradient(70% 90% at 50% 38%, var(--felt-hi), var(--felt) 55%, var(--felt-deep) 100%);
   box-shadow: inset 0 0 0 2px rgba(230, 184, 60, 0.45), inset 0 0 26px 4px rgba(0, 0, 0, 0.65), 0 6px 0 var(--wall);
-}
-.sala .center::before {
-  content: ""; position: absolute; inset: 7px; z-index: -1; border-radius: 10px; pointer-events: none;
-  border: 1.5px dashed rgba(230, 184, 60, 0.4);
 }
 .sala .center::after {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0.1; background: var(--noise);
@@ -53,13 +49,11 @@
 .stack .card:nth-child(2):nth-last-child(3) { --fan: -4deg; }
 .stack .card:nth-child(3):nth-last-child(2) { --fan: 4deg; }
 .stack .card:nth-child(4):last-child { --fan: 12deg; }
-/* con el mouse sobre una carta jugada, esa pasa adelante y las demás de la mesa se apagan. Se apaga la imagen
-   (no la carta) porque la animación de tirar deja fijada la opacidad de la carta. */
-@media (hover: hover) and (pointer: fine) {
-  .stack .card img, .stack .card .who { transition: opacity 160ms var(--ease-out); }
-  .stack .card:hover { z-index: 4; }
-  .tricks:has(.stack .card:hover) .stack .card:not(:hover) :is(img, .who) { opacity: 0.3; }
-}
+/* la carta jugada que se mira en grande (mouse encima, o tocada en el celular) pasa adelante y las demás de la
+   mesa se apagan. Se apaga la imagen (no la carta) porque la animación de tirar deja fijada su opacidad. */
+.stack .card img, .stack .card .who, .stack .card .up-badges { transition: opacity 160ms var(--ease-out); }
+.stack .card.peeking { z-index: 4; }
+.tricks:has(.stack .card.peeking) .stack .card:not(.peeking) :is(img, .who, .up-badges) { opacity: 0.3; }
 
 /* turno de los rivales: aro de luz */
 .seat-bot.thinking { border-radius: var(--r); box-shadow: 0 0 0 2px var(--signal), 0 0 14px rgba(230, 184, 60, 0.3); }

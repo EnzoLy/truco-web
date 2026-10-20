@@ -105,7 +105,7 @@
 .baza { --cw: var(--cw-trick); position: relative; display: grid; justify-items: center; gap: 4px; padding: 6px; border-radius: 12px; border: 2px solid transparent; transition: border-color 250ms var(--ease-out); }
 .baza.won-me { border-color: var(--signal); }
 .baza.won-foe { border-color: var(--lacre); }
-.baza.parda { border-color: var(--porcelain-dim); border-style: dashed; }
+.baza.parda { border-color: var(--porcelain-dim); }
 .stack { display: flex; min-height: calc(var(--cw) * 1.5); }
 .stack .card + .card { margin-left: calc(var(--cw) * -0.6); }
 .stack .card { transition: none; }
@@ -167,6 +167,11 @@
 .peek img { display: block; width: 100%; height: auto; border-radius: 8px; }
 .peek strong { font-family: var(--display); font-weight: 400; font-size: 16px; margin-top: 4px; }
 .peek span { font-size: 13px; font-weight: 700; color: #4a4d58; }
+/* mejoras de la carta escritas en la vista grande, con el mismo icono que lleva la carta */
+.peek-ups { list-style: none; margin: 6px 0 0; padding: 6px 0 0; display: grid; gap: 5px; width: 100%; border-top: 1px solid rgba(22, 24, 29, 0.18); text-align: left; }
+.peek-ups li { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; line-height: 1.25; }
+.peek-ups .up-badge { --badge: 22px; flex: none; cursor: default; }
+.peek-ups li > span:last-child { color: var(--ink); font-size: 13px; }
 
 /* En la mesa no hay encabezado: mas lugar para jugar. */
 .plate.in-game { padding-top: 16px; }
@@ -217,10 +222,11 @@
 
 /* La carta que va ganando la baza en juego: etiqueta "Gana" arriba y borde que late. No se pone encima de
    las demás para no taparles el número; la etiqueta va por arriba de la carta, donde nada la cubre. */
-.stack .card.leading::after {
-  content: attr(data-lead); position: absolute; left: -2px; top: -13px; z-index: 3;
-  padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
-  background: var(--lead, var(--porcelain)); color: var(--ink); box-shadow: 0 1px 0 var(--wall);
+/* .drop también usa ::after (el aro al caer, en vida.css): si la carta recién tirada va ganando, gana la etiqueta. */
+.stack .card.leading::after, .stack .card.leading.drop::after {
+  content: attr(data-lead); position: absolute; inset: auto; left: -2px; top: -13px; z-index: 3;
+  padding: 1px 7px; border: 0; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  background: var(--lead, var(--porcelain)); color: var(--ink); box-shadow: 0 1px 0 var(--wall); opacity: 1; animation: none; transform: none;
 }
 .stack .card.role-me.leading { --lead: var(--role-me); }
 .stack .card.role-ally.leading { --lead: var(--role-ally); }
@@ -229,7 +235,7 @@
 /* Late con la opacidad del borde (::before), no con un filter: no repinta la carta en cada cuadro. */
 .stack .card.leading::before { background: none; box-shadow: 0 0 0 3px var(--lead, var(--porcelain)); opacity: 0; animation: lead-pulse 1.4s ease-in-out infinite; }
 @keyframes lead-pulse { 50% { opacity: 0.9; } }
-.baza.live { border-style: dotted; border-color: var(--porcelain-dim); }
+.baza.live { border-color: rgba(247, 241, 227, 0.35); }
 .trick-result.lead-me { color: var(--role-me); }
 .trick-result.lead-ally { color: var(--role-ally); }
 .trick-result.lead-foe { color: #ff9d96; }

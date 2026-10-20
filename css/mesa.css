@@ -135,7 +135,6 @@ a { text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
 
 /* Fosforos en cuadritos de cinco: 15 malas y 15 buenas, entintados sobre la porcelana. */
 .tally { position: relative; }
-.tally::after { content: ""; position: absolute; top: 2px; bottom: 2px; left: 50%; border-left: 1px dashed rgba(22, 24, 29, 0.4); pointer-events: none; }
 .tally svg { display: block; width: 100%; height: auto; max-height: 26px; }
 .tally .stick { stroke: rgba(22, 24, 29, 0.14); stroke-width: 2.8; stroke-linecap: round; }
 .tally .stick.on { stroke: var(--enamel); }
