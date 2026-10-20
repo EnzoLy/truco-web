@@ -11,6 +11,7 @@
   const longestWord = (text) => Math.max(1, ...String(text).split(/\s+/).map((w) => Array.from(w).length));
 
   const T = window.SalaText;
+  const Act = window.TrucoActionButtons;
   const BUBBLE_MS = 2200;
   const NOTICE_MS = 5000;
   const LOG_LIMIT = 80;
@@ -367,6 +368,9 @@
       return b;
     }
 
+    /** Botón de la botonera: con icono y una línea chica con lo que pasa (ver action-buttons.js). */
+    const actionButton = (label, cls, icon, sub, onClick) => Act.decorate(button(label, cls, onClick), { icon, sub });
+
     function closeMenus(except) {
       document.querySelectorAll('.menu-wrap.open').forEach((w) => {
         if (w === except) return;
@@ -376,9 +380,9 @@
     }
 
     /** Menu que se abre hacia arriba: envidos o señas. */
-    function menuButton(title, cls, items) {
+    function menuButton(title, cls, items, icon) {
       const wrap = el('div', 'menu-wrap');
-      const trigger = button(title, `${cls} menu-trigger`, () => {});
+      const trigger = Act.decorate(button(title, `${cls} menu-trigger`, () => {}), { icon });
       trigger.append(el('span', 'caret'));
       trigger.setAttribute('aria-haspopup', 'menu');
       trigger.setAttribute('aria-expanded', 'false');
@@ -419,6 +423,25 @@
       }
     }
 
+    /** Las respuestas a un canto: Quiero / No quiero, cada una con lo que vale. */
+    function responseButtons(view) {
+      const p = view.pending;
+      if (view.phase === 'respond-flor') {
+        return [
+          actionButton('Con flor quiero', 'primary', 'accept', 'Se cuentan las flores', () => send({ type: 'accept' })),
+          actionButton('Me achico', 'danger', 'reject', 'Le das los puntos de la flor', () => send({ type: 'reject' })),
+        ];
+      }
+      const Tr = window.Truco;
+      const isTruco = view.phase === 'respond-truco';
+      const yes = isTruco ? Act.subs.trucoAccept(Tr, p.level) : Act.subs.envidoAccept(Tr, p.stack, view.scores);
+      const no = isTruco ? Act.subs.trucoReject(Tr, p.level) : Act.subs.envidoReject(Tr, p.stack, view.scores);
+      return [
+        actionButton('Quiero', 'primary', 'accept', yes, () => send({ type: 'accept' })),
+        actionButton('No quiero', 'danger', 'reject', no, () => send({ type: 'reject' })),
+      ];
+    }
+
     function renderActions(view) {
       const key = JSON.stringify([view.legal, view.phase, view.trucoLevel, view.pending && view.pending.level, snap.status, snap.signOptions.length]);
       if (key === actionsKey) return;
@@ -428,40 +451,38 @@
       const nodes = [];
       const legal = view.legal;
       const ofType = (t) => legal.filter((a) => a.type === t);
-      if (view.phase === 'respond-truco' || view.phase === 'respond-envido' || view.phase === 'respond-flor') {
-        if (ofType('accept').length) {
-          const isFlor = view.phase === 'respond-flor';
-          nodes.push(button(isFlor ? 'Con flor quiero' : 'Quiero', 'primary', () => send({ type: 'accept' })));
-          nodes.push(button(isFlor ? 'Me achico' : 'No quiero', 'danger', () => send({ type: 'reject' })));
-        }
-      }
+      if (ofType('accept').length) nodes.push(...responseButtons(view));
       ofType('flor').forEach((a) => {
         const label = view.phase === 'respond-flor' ? T.FLOR_NAMES[a.what] : '¡Flor!';
-        nodes.push(button(label, 'hot', () => send({ type: 'flor', what: a.what })));
+        nodes.push(actionButton(label, 'hot flor', 'flor', view.phase === 'respond-flor' ? 'Subís la flor' : 'Antes de tirar', () => send({ type: 'flor', what: a.what })));
       });
       if (ofType('truco').length) {
         const level = view.phase === 'respond-truco' ? view.pending.level + 1 : view.trucoLevel + 1;
         const label = view.phase === 'respond-truco' ? `Quiero ${T.TRUCO_NAMES[level].toLowerCase()}` : T.TRUCO_NAMES[level];
-        nodes.push(button(label, 'hot', () => send({ type: 'truco' })));
+        nodes.push(actionButton(label, 'hot', 'truco', Act.subs.trucoCall(window.Truco, level), () => send({ type: 'truco' })));
       }
       const envidos = ofType('envido');
       if (envidos.length === 1) {
         const nameOfEnvido = T.ENVIDO_NAMES[envidos[0].what];
-        nodes.push(button(view.phase === 'respond-envido' ? `Subo: ${nameOfEnvido.toLowerCase()}` : nameOfEnvido, 'cool', () => send({ type: 'envido', what: envidos[0].what })));
+        const label = view.phase === 'respond-envido' ? `Subo: ${nameOfEnvido.toLowerCase()}` : nameOfEnvido;
+        nodes.push(actionButton(label, 'cool', 'envido', ENVIDO_MENU_HINT[envidos[0].what], () => send({ type: 'envido', what: envidos[0].what })));
       } else if (envidos.length > 1) {
         nodes.push(menuButton(ENVIDO_MENU_TITLE[view.phase] || 'Envido', 'cool', envidos.map((a) => ({
           name: view.phase === 'respond-envido' && a.what === 'envido' ? 'Envido otra vez' : T.ENVIDO_NAMES[a.what],
           hint: ENVIDO_MENU_HINT[a.what],
           run: () => send({ type: 'envido', what: a.what }),
-        }))));
+        })), 'envido'));
       }
-      if (ofType('ask-flor').length) nodes.push(button('¿Con flor?', 'cool', () => send({ type: 'ask-flor' })));
-      if (ofType('mazo').length) nodes.push(button('Mazo', 'ghost', () => send({ type: 'mazo' })));
+      if (ofType('ask-flor').length) nodes.push(actionButton('¿Con flor?', 'cool', 'ask', 'Le preguntás al mazo', () => send({ type: 'ask-flor' })));
+      if (ofType('mazo').length) {
+        nodes.push(Act.confirmFirst(actionButton('Mazo', 'ghost', 'mazo', 'Perdés la mano', () => {}), () => send({ type: 'mazo' })));
+      }
       if (snap.status === 'playing' && snap.signOptions.length && view.phase !== 'hand-over') {
-        nodes.push(menuButton('Señas', 'ghost signs-btn', snap.signOptions.map((o) => ({ name: o.text, run: () => sendSign(o.id) }))));
+        nodes.push(menuButton('Señas', 'ghost signs-btn', snap.signOptions.map((o) => ({ name: o.text, run: () => sendSign(o.id) })), 'signs'));
       }
       nodes.forEach((n, i) => n.style.setProperty('--i', String(i)));
       box.append(...nodes);
+      Act.arm(box);
     }
 
     function renderSigns() {
@@ -666,13 +687,10 @@
       switch (ev.type) {
         case 'play': Sound.play('play'); break;
         case 'truco-call': knockTable(ev.level); break;
-        case 'envido-call':
-        case 'flor-call': Sound.play('envido'); break;
         case 'truco-response':
         case 'envido-response':
         case 'flor-response':
           if (ev.response === 'accept') Sound.play('quiero');
-          else if (ev.response === 'reject') Sound.play('noquiero');
           break;
         case 'mazo': Sound.play('mazo'); break;
         case 'hand-end': handEnd(ev); break;

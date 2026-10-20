@@ -17,6 +17,10 @@
   const DEFAULT_SAMPLES = 140;
   const MAX_ENVIDO_RESAMPLES = 40;
   const CHEAT_REAL_MARGIN = 5; // el tramposo sube a real envido si te saca esta ventaja
+  const ENVIDO_LIFT_SAMPLES = 120; // manos al azar para medir cuánto envido le suman al rival sus mejoras
+
+  const keyOf = (c) => `${c.num}${c.suit}`;
+  const hasEnvidoUpgrade = (upgrades) => Boolean(upgrades) && Object.values(upgrades).some((u) => typeof u.envido === 'number');
 
   // Priors: cuantos datos "imaginarios" tiene el bot antes de conocerte.
   const PRIOR = {
@@ -277,8 +281,7 @@
     estimate(view, samples = this.samples) {
       const me = view.me;
       const opp = view.opp;
-      const known = new Set([...view.dealt, ...view.oppPlayed].map((c) => `${c.num}${c.suit}`));
-      const unseen = T.makeDeck().filter((c) => !known.has(`${c.num}${c.suit}`));
+      const unseen = this.unseenCards(view);
       const unknownCount = 3 - view.oppPlayed.length;
       const profiles = [null, null];
       profiles[me] = { best: 0.45, worst: 0.2 };
@@ -306,6 +309,25 @@
       }
       const perCard = options.map((o) => ({ index: o.index, p: o.wins / samples }));
       return { perCard, best: Math.max(...perCard.map((o) => o.p)) };
+    }
+
+    /** Cartas que el rival puede tener, ya con sus mejoras (un 1 de copa con Ancho falso mata como el de basto). */
+    unseenCards(view) {
+      const known = new Set([...view.dealt, ...view.oppPlayed].map(keyOf));
+      return T.withUpgrades(T.makeDeck().filter((c) => !known.has(keyOf(c))), view.oppUpgrades);
+    }
+
+    /** Cuánto envido de más tiene en promedio el rival por sus mejoras (Figuras con onda, cartas con Brillo). */
+    oppEnvidoLift(view) {
+      if (!hasEnvidoUpgrade(view.oppUpgrades)) return 0;
+      const unseen = this.unseenCards(view);
+      const plain = (cards) => cards.map(({ up, ...card }) => card);
+      let total = 0;
+      for (let i = 0; i < ENVIDO_LIFT_SAMPLES; i++) {
+        const pick = [...view.oppPlayed, ...T.shuffle(unseen, this.rng).slice(0, 3 - view.oppPlayed.length)];
+        total += T.envidoPoints(pick) - T.envidoPoints(plain(pick));
+      }
+      return total / ENVIDO_LIFT_SAMPLES;
     }
 
     sampleOpponent(unseen, count, view) {
@@ -369,7 +391,7 @@
         return view.myEnvido - known >= CHEAT_REAL_MARGIN ? 'real' : 'envido';
       }
       const t = this.traits;
-      const e = view.myEnvido + t.envidoCallShift;
+      const e = view.myEnvido + t.envidoCallShift - this.oppEnvidoLift(view);
       const foldRate = this.rates().envidoFold;
       const isMano = view.mano === view.me;
       const roll = this.rng();
@@ -427,7 +449,7 @@
         return { type: 'accept' };
       }
       const mean = this.rates().envidoCallMean;
-      const effective = view.myEnvido + (view.mano === view.me ? 0.5 : 0);
+      const effective = view.myEnvido + (view.mano === view.me ? 0.5 : 0) - this.oppEnvidoLift(view);
       const acceptThreshold = clamp(
         mean - 2.5 + 1.5 * (stack.length - 1) + (stack.includes('falta') ? 3 : 0), 21, 31,
       ) + this.traits.envidoAcceptShift;

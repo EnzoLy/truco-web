@@ -26,11 +26,13 @@ canto y telón de fin de mano.
 - Cada 4 rondas toca un jefe: el **Tahúr**, que ve tus cartas, o un Coleccionista cargado de amuletos.
 - **Monedas:** se ganan por mano, por envido o flor ganados, más un premio por partida ganada. Al final de
   cada ronda cobrás interés: 1 moneda cada 5 ahorradas.
-- **Tienda:** hasta 5 amuletos, de cinco tipos:
+- **Tienda (la pulpería):** hasta 5 amuletos, de cinco tipos. Los precios salen de simular partidas bot contra bot
+  y medir cuánto sube la chance de ganar cada amuleto:
   - puntaje;
   - economía;
   - cartas;
-  - información (ver cartas del rival, saber su envido);
+  - información (ver cartas del rival, saber su envido). La Bola de cristal muestra la mano del rival una de cada
+    3 manos, no siempre;
   - mejoras de cartas, que duran **una sola partida**.
 - **Flor:** no hay, salvo que tengas el amuleto Flor.
 - **Guardado:** la run se guarda en el navegador y en Supabase con una identidad anónima por dispositivo

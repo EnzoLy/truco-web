@@ -142,18 +142,36 @@
   </div>
 </div>
 
-<div class="overlay" id="shop" hidden>
+<div class="overlay shop-overlay" id="shop" hidden>
   <div class="dialog shop" role="dialog" aria-modal="true" aria-labelledby="shop-title">
-    <h2 id="shop-title">Tienda</h2>
-    <p class="shop-coins">Tenés <b id="shop-coins">0</b> monedas</p>
-    <div class="shop-items" id="shop-items"></div>
-    <h3 class="shop-sub" id="shop-owned-title">Tus amuletos</h3>
-    <div class="shop-owned" id="shop-owned"></div>
-    <p class="shop-msg" id="shop-msg" aria-live="polite"></p>
-    <div class="shop-actions">
-      <button class="btn ghost" id="shop-reroll" type="button">Cambiar ofertas</button>
-      <button class="btn primary" id="shop-next" type="button">Siguiente ronda</button>
+    <header class="shop-head">
+      <div class="shop-heading">
+        <p class="shop-eyebrow" id="shop-eyebrow"></p>
+        <h2 id="shop-title">La pulpería</h2>
+      </div>
+      <p class="purse" aria-label="Tus monedas"><span class="coin-ico" aria-hidden="true"></span><b id="shop-coins">0</b></p>
+    </header>
+    <div class="shop-body">
+      <section class="shop-sec" aria-labelledby="shop-amulets-title">
+        <h3 class="shop-sub" id="shop-amulets-title">Amuletos <span>te duran toda la run</span></h3>
+        <div class="shop-items" id="shop-items"></div>
+      </section>
+      <section class="shop-sec" aria-labelledby="shop-ups-title">
+        <h3 class="shop-sub" id="shop-ups-title">Mejoras de cartas <span>solo la próxima partida</span></h3>
+        <div class="shop-ups" id="shop-ups"></div>
+      </section>
+      <section class="shop-sec" aria-labelledby="shop-owned-title">
+        <h3 class="shop-sub" id="shop-owned-title">Tu bolsillo</h3>
+        <div class="shop-owned" id="shop-owned"></div>
+      </section>
     </div>
+    <footer class="shop-foot">
+      <p class="shop-msg" id="shop-msg" aria-live="polite"></p>
+      <div class="shop-actions">
+        <button class="btn ghost" id="shop-reroll" type="button">Otras ofertas</button>
+        <button class="btn primary" id="shop-next" type="button">Siguiente ronda</button>
+      </div>
+    </footer>
   </div>
 </div>
 
@@ -176,6 +194,7 @@
 <script src="js/arcade-store.js"></script>
 <script src="js/table-fx.js"></script>
 <script src="js/card-badges.js"></script>
+<script src="js/action-buttons.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/arcade-shell.js"></script>
 <script src="js/arcade-ui.js"></script>

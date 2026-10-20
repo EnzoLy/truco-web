@@ -105,7 +105,8 @@
   }
 
   // ---------- mods (opcionales: amuletos del modo arcade) ----------
-  // mods[p] = { trucoBonus, envidoBonus, envidoCountBonus, peek: 'one'|'all', envidoHint, flor, upgrades: { '4copa': { rank, envido } } }
+  // mods[p] = { trucoBonus, envidoBonus, envidoCountBonus, peek: 'one'|'all', peekEvery: N, envidoHint, flor, upgrades: { '4copa': { rank, envido } } }
+  // peekEvery: N muestra toda la mano del rival en una de cada N manos (la bola de cristal).
 
   const modOf = (s, p) => (s.mods && s.mods[p]) || null;
   const modNumber = (s, p, field) => {
@@ -113,14 +114,18 @@
     return m && typeof m[field] === 'number' ? m[field] : 0;
   };
 
+  /** Marca con card.up las cartas de la lista que están en upgrades ({ '4copa': { rank, envido } }). */
+  function withUpgrades(cards, upgrades) {
+    if (!upgrades) return cards;
+    return cards.map((card) => (upgrades[cardKey(card)] ? { ...card, up: { ...upgrades[cardKey(card)] } } : card));
+  }
+
   /** Marca con card.up las cartas que el duenio de cada mano tiene mejoradas. */
   function applyUpgrades(hands, mods) {
-    return hands.map((hand, p) => {
-      const upgrades = mods && mods[p] && mods[p].upgrades;
-      if (!upgrades) return hand;
-      return hand.map((card) => (upgrades[cardKey(card)] ? { ...card, up: { ...upgrades[cardKey(card)] } } : card));
-    });
+    return hands.map((hand, p) => withUpgrades(hand, mods && mods[p] && mods[p].upgrades));
   }
+
+  const hasUpgrades = (upgrades) => Boolean(upgrades) && Object.keys(upgrades).length > 0;
 
   /** Envido de un jugador, con su bonus de amuletos. */
   const envidoOf = (s, p) => envidoPoints(s.dealt[p]) + modNumber(s, p, 'envidoCountBonus');
@@ -181,6 +186,9 @@
       !s.envido.done && s.trucoLevel === 0 && s.cur.cards[p] === null
     );
   }
+
+  /** Ve toda la mano del rival: siempre (tramposo) o en una de cada peekEvery manos. */
+  const seesAll = (m, handNo) => m.peek === 'all' || (m.peekEvery > 0 && handNo % m.peekEvery === 0);
 
   const hasFlor = (cards) => cards.length === HAND_SIZE && cards.every((card) => card.suit === cards[0].suit);
   const mayFlor = (s, p) => Boolean(modOf(s, p) && modOf(s, p).flor) && hasFlor(s.dealt[p]);
@@ -433,11 +441,14 @@
     // El bonus de envido del rival es publico (se ve su amuleto): sirve para leer su "tengo N".
     const oppBonus = modNumber(s, opp, 'envidoCountBonus');
     if (oppBonus) view.oppEnvidoBonus = oppBonus;
+    // Las mejoras del rival también son públicas: el bot las usa para imaginar su mano.
+    const oppMods = modOf(s, opp);
+    if (oppMods && hasUpgrades(oppMods.upgrades)) view.oppUpgrades = clone(oppMods.upgrades);
     const mine = modOf(s, p);
     if (!mine) return view;
     view.mods = clone(mine);
     view.myFlor = mayFlor(s, p);
-    if (mine.peek === 'all') {
+    if (seesAll(mine, s.handNo)) {
       view.oppHand = clone(s.hands[opp]);
       view.oppEnvidoTotal = envidoOf(s, opp);
     }
@@ -448,7 +459,7 @@
 
   return {
     SUITS, NUMBERS, TARGET, MAX_TRUCO_LEVEL,
-    makeDeck, shuffle, rankOf, envidoPoints, handWinner, valueOfTruco, cardKey, applyUpgrades,
+    makeDeck, shuffle, rankOf, envidoPoints, handWinner, valueOfTruco, cardKey, applyUpgrades, withUpgrades,
     envidoRaiseOptions, envidoStakes,
     newGame, dealHand, step, legalActions, viewFor, canCallTruco, canCallEnvido,
   };

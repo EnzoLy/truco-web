@@ -343,18 +343,48 @@ button.card:disabled { cursor: default; }
 .btn:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 0 0 0 var(--drop); transition-duration: 60ms; }
 .btn:disabled { opacity: 0.5; cursor: default; }
 
-/* Un color por funcion. Quiero: señal. Truco: lacre. Envido: porcelana. Mazo: aparte, chico y sin relleno. */
-.btn.primary { --face: var(--signal); --rim: var(--wall); --drop: var(--wall); --fg: var(--ink); }
-.btn.danger { --face: var(--enamel-hi); --rim: var(--porcelain-dim); --drop: var(--wall); }
-.btn.hot { --face: var(--lacre); --rim: var(--wall); --drop: var(--wall); --fg: #fff; min-height: 56px; font-size: 18px; }
-.btn.cool, .menu-wrap > .btn.cool { --face: var(--porcelain); --rim: var(--wall); --drop: var(--wall); --fg: var(--ink); min-height: 56px; font-size: 18px; }
-.btn.ghost { --face: transparent; --rim: rgba(247, 241, 227, 0.4); --drop: transparent; --fg: var(--porcelain-dim); min-height: 44px; padding-inline: 14px; font-size: 16px; font-weight: 700; background: none; }
+/* Un color y un icono por accion, para no confundirlas:
+   Quiero verde con tilde, No quiero oscuro con cruz roja, Truco lacre con espada, Envido dorado con estrella,
+   Flor porcelana con flor y Mazo chico, aparte y con doble toque (ver action-buttons.js). */
+.btn.primary { --face: var(--ok); --rim: var(--wall); --drop: var(--wall); --fg: #fff; --chip: rgba(255, 255, 255, 0.22); --chip-fg: #fff; }
+.btn.danger { --face: var(--enamel); --rim: rgba(247, 241, 227, 0.55); --drop: var(--wall); --fg: var(--porcelain); --chip: var(--lacre); --chip-fg: #fff; }
+.btn.hot { --face: var(--lacre); --rim: var(--wall); --drop: var(--wall); --fg: #fff; --chip: rgba(255, 255, 255, 0.2); --chip-fg: #fff; min-height: 56px; font-size: 18px; }
+.btn.cool, .menu-wrap > .btn.cool { --face: var(--signal); --rim: var(--wall); --drop: var(--wall); --fg: var(--ink); --chip: rgba(22, 24, 29, 0.14); --chip-fg: var(--ink); min-height: 56px; font-size: 18px; }
+.btn.cool.flor { --face: var(--porcelain); --chip: var(--lacre); --chip-fg: #fff; }
+.btn.ghost { --face: transparent; --rim: rgba(247, 241, 227, 0.4); --drop: transparent; --fg: var(--porcelain-dim); --chip: transparent; --chip-fg: var(--porcelain-dim); min-height: 44px; padding-inline: 14px; font-size: 16px; font-weight: 700; background: none; }
 /* Orden en la botonera: Quiero, No quiero, Mazo (chico y aparte), Truco, Envido. */
 .actions > .btn.primary { order: -3; flex-basis: calc(50% - 8px); }
 .actions > .btn.danger { order: -2; flex-basis: calc(50% - 8px); }
 .actions > .btn.ghost { order: -1; flex: 0 0 auto; align-self: center; margin-right: 8px; }
 .actions > .btn.hot { flex-grow: 1.4; }
 .actions > .menu-wrap { order: 1; }
+
+/* Boton con icono a la izquierda y, abajo de la etiqueta, una linea chica con lo que pasa ("Le das 1 punto"). */
+.btn.act { justify-content: flex-start; gap: 10px; padding: 7px 12px 7px 8px; text-align: left; }
+.act-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--chip); color: var(--chip-fg); }
+.act-icon svg { width: 20px; height: 20px; fill: currentColor; }
+.act-text { display: grid; gap: 3px; min-width: 0; }
+.act-label { line-height: 1; }
+.act-sub { font-family: var(--font); font-size: 12px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.15; text-transform: none; opacity: 0.85; }
+.btn.ghost.act { padding: 5px 12px 5px 6px; gap: 6px; }
+.btn.ghost .act-icon { width: 28px; height: 28px; }
+.btn.ghost .act-sub { font-size: 11px; }
+.menu-wrap > .btn.act .caret { margin-left: auto; }
+/* Quiero un poco mas grande y con brillo: es la respuesta que mas se toca. */
+.actions > .btn.primary.act, .actions > .btn.danger.act { min-height: 60px; }
+.btn.primary .act-icon { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35); }
+/* Mazo: el primer toque pregunta y se pone rojo; el segundo confirma. */
+.btn.ghost.confirming { --rim: var(--lacre); --fg: #ff9d96; --chip-fg: #ff9d96; animation: confirm-pulse 900ms ease-in-out infinite; }
+@keyframes confirm-pulse { 50% { box-shadow: 0 0 0 4px rgba(200, 38, 31, 0.35); } }
+/* Botones recien aparecidos: un instante sin responder, para que un toque viejo no caiga en otro boton. */
+.actions.arming .btn, .actions.arming .menu-wrap { pointer-events: none; }
+@media (max-width: 420px) {
+  .btn.act { gap: 8px; padding-inline: 6px 8px; font-size: 15px; }
+  .btn.hot.act, .btn.cool.act { font-size: 16px; }
+  .act-icon { width: 30px; height: 30px; }
+  .act-icon svg { width: 18px; height: 18px; }
+  .act-sub { font-size: 11px; }
+}
 .status .btn { flex: 0 0 auto; min-width: 200px; }
 
 /* Menu del envido: se abre hacia arriba, sobre el boton. */

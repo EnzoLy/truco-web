@@ -161,3 +161,17 @@ test('envidoHint avisa si el rival tiene mas de 27', () => {
   assert.equal(T.viewFor(rig([high, weak], { mods: [{ envidoHint: true }, {}] }), 0).oppEnvidoHigh, false);
   assert.equal(T.viewFor(rig([weak, high]), 0).oppEnvidoHigh, undefined);
 });
+
+test('peekEvery muestra la mano del rival solo en una de cada N manos, y el espejito sigue en las demás', () => {
+  const s = rig([weak, strong], { mods: [{ peekEvery: 3, peek: 'one' }, {}] });
+  s.handNo = 3;
+  assert.deepEqual(T.viewFor(s, 0).oppHand, strong);
+  s.handNo = 4;
+  const v = T.viewFor(s, 0);
+  assert.equal(v.oppHand, undefined);
+  assert.deepEqual(v.oppPeek, strong[0]);
+  const plain = rig([weak, strong], { mods: [{ peekEvery: 3 }, {}] });
+  plain.handNo = 2;
+  assert.equal(T.viewFor(plain, 0).oppHand, undefined);
+  assert.equal(T.viewFor(plain, 0).oppPeek, undefined);
+});

@@ -174,19 +174,19 @@ test('los rivales solo llevan amuletos de puntaje o cartas', () => {
 test('vender devuelve la mitad del precio', () => {
   const run = shopRun({ coins: 0, amulets: ['pico-de-oro'] });
   const next = A.sell(run, 'pico-de-oro');
-  assert.equal(next.coins, 3);
+  assert.equal(next.coins, Math.floor(A.AMULETS['pico-de-oro'].price / 2));
   assert.deepEqual(next.amulets, []);
   assert.throws(() => A.sell(next, 'pico-de-oro'), /No tenés/);
 });
 
 test('el reroll cuesta cada vez mas', () => {
   const run = shopRun({ coins: 20 });
-  assert.equal(A.rerollCost(run), 2);
+  assert.equal(A.rerollCost(run), 3);
   const once = A.reroll(run, seeded(5));
-  assert.equal(once.coins, 18);
-  assert.equal(A.rerollCost(once), 3);
+  assert.equal(once.coins, 17);
+  assert.equal(A.rerollCost(once), 4);
   const twice = A.reroll(once, seeded(6));
-  assert.equal(twice.coins, 15);
+  assert.equal(twice.coins, 13);
 });
 
 test('salir de la tienda arma la ronda siguiente', () => {
@@ -207,7 +207,9 @@ test('modsFor junta amuletos, mejoras y trampas del rival', () => {
   };
   const [mine, theirs] = A.modsFor(run);
   assert.equal(mine.trucoBonus, 1);
-  assert.equal(mine.peek, 'all');
+  // espejito (una carta siempre) + bola de cristal (toda la mano cada 3 manos)
+  assert.equal(mine.peek, 'one');
+  assert.equal(mine.peekEvery, 3);
   assert.deepEqual(mine.upgrades['7copa'], { rank: 10, envido: 7 });
   assert.deepEqual(mine.upgrades['4oro'], { rank: 9 });
   assert.equal(theirs.envidoBonus, 1);
@@ -268,4 +270,12 @@ test('la oferta de filo explica la nueva fuerza de la carta', () => {
       assert.ok(!it.desc.includes('más fuerte'), it.desc);
     });
   }
+});
+
+test('ningún amuleto deja ver la mano del rival en todas las manos', () => {
+  for (const id of A.AMULET_IDS) {
+    const mods = A.AMULETS[id].mods || {};
+    assert.notEqual(mods.peek, 'all', id);
+  }
+  assert.equal(A.AMULETS['bola-de-cristal'].mods.peekEvery, 3);
 });

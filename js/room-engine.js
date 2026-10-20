@@ -516,15 +516,26 @@
         ? s.teams.map((t, seat) => (t === s.teams[p] && seat !== p ? { seat, hand: clone(s.hands[seat]), dealt: clone(s.dealt[seat]) } : null)).filter(Boolean)
         : [],
     };
-    return hasHand && modOf(s, p) ? { ...view, ...amuletView(s, p) } : view;
+    const withRivals = hasHand ? { ...view, ...rivalUpgradesView(s, p) } : view;
+    return hasHand && modOf(s, p) ? { ...withRivals, ...amuletView(s, p) } : withRivals;
   }
 
-  /** Lo que los amuletos de información dejan ver de los rivales. El tramposo es un rival con peek 'all'. */
+  /** Las mejoras de cartas de los rivales son públicas (se ven sus amuletos): los bots las tienen en cuenta. */
+  function rivalUpgradesView(s, p) {
+    const list = opposingSeats(s, p)
+      .map((seat) => ({ seat, upgrades: (modOf(s, seat) || {}).upgrades }))
+      .filter((r) => r.upgrades && Object.keys(r.upgrades).length)
+      .map((r) => ({ seat: r.seat, upgrades: clone(r.upgrades) }));
+    return list.length ? { rivalUpgrades: list } : {};
+  }
+
+  /** Lo que los amuletos de información dejan ver de los rivales. El tramposo es un rival con peek 'all';
+   *  peekEvery: N (bola de cristal) muestra todo en una de cada N manos. */
   function amuletView(s, p) {
     const m = modOf(s, p);
     const rivals = opposingSeats(s, p);
     const out = { mods: clone(m) };
-    if (m.peek === 'all') out.oppHands = rivals.map((seat) => ({ seat, hand: clone(s.hands[seat]) }));
+    if (m.peek === 'all' || (m.peekEvery > 0 && s.handNo % m.peekEvery === 0)) out.oppHands = rivals.map((seat) => ({ seat, hand: clone(s.hands[seat]) }));
     else if (m.peek === 'one') out.oppPeeks = rivals.map((seat) => ({ seat, card: clone(s.dealt[seat][0]) }));
     if (m.envidoHint) out.oppEnvidoHigh = rivals.map((seat) => ({ seat, high: seatEnvido(s, seat) > ENVIDO_HINT }));
     return out;

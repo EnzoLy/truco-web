@@ -10,7 +10,7 @@
 })(typeof self !== 'undefined' ? self : this, function (Truco) {
   'use strict';
 
-  const { rankOf, envidoPoints } = Truco;
+  const { rankOf, envidoPoints, makeDeck, shuffle, withUpgrades } = Truco;
   const TOP_CARDS = 3; // en una mano se juegan, como mucho, 3 cartas por equipo
   const ENVIDO_CALL = 27;
   const ENVIDO_ACCEPT = 24;
@@ -56,11 +56,70 @@
   const topPower = (cards) => cards.map(cardPower).sort((a, b) => b - a).slice(0, TOP_CARDS).reduce((t, v) => t + v, 0);
   const rivalHands = (view) => (view.oppHands || []).map((o) => o.hand);
 
+  // ---------- mejoras de los rivales (view.rivalUpgrades: [{ seat, upgrades }]) ----------
+  const keyOf = (c) => `${c.num}${c.suit}`;
+  const DECK = makeDeck();
+  const DECK_BY_KEY = new Map(DECK.map((c) => [keyOf(c), c]));
+  const LIFT_SAMPLES = 120;
+
+  const knownKeys = (view) => new Set([...view.hand, ...partnerHands(view).flat(), ...(view.played || []).flat()].map(keyOf));
+
+  /** Sorteo propio y repetible para medir: no gasta el rng de las decisiones. */
+  function seededRng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** Poder de más que les dan a los rivales sus cartas mejoradas (Ancho falso, Sietes bravos, Filo), en promedio:
+   *  cada carta mejorada que no se vio cuenta según la chance de que la tenga un rival. */
+  function rivalPowerLift(view) {
+    const rivals = view.rivalUpgrades || [];
+    if (!rivals.length) return 0;
+    const known = knownKeys(view);
+    const unseen = Math.max(1, DECK.length - known.size);
+    let lift = 0;
+    for (const { seat, upgrades } of rivals) {
+      const left = (view.handCounts || [])[seat] || 0;
+      for (const [key, up] of Object.entries(upgrades)) {
+        const base = DECK_BY_KEY.get(key);
+        if (!base || typeof up.rank !== 'number' || known.has(key)) continue;
+        lift += (left / unseen) * (cardPower({ ...base, up }) - cardPower(base));
+      }
+    }
+    return lift;
+  }
+
+  /** Envido de más que tiene en promedio el mejor rival por sus mejoras (Figuras con onda, Brillo). */
+  function rivalEnvidoLift(view) {
+    const rivals = (view.rivalUpgrades || []).filter((r) => Object.values(r.upgrades).some((u) => typeof u.envido === 'number'));
+    if (!rivals.length) return 0;
+    const known = knownKeys(view);
+    const pool = DECK.filter((c) => !known.has(keyOf(c)));
+    const rng = seededRng((view.handNo || 0) * 31 + view.me);
+    const plain = (cards) => cards.map(({ up, ...card }) => card);
+    return Math.max(...rivals.map(({ seat, upgrades }) => {
+      const shown = (view.played || [])[seat] || [];
+      const cards = withUpgrades(pool, upgrades);
+      let total = 0;
+      for (let i = 0; i < LIFT_SAMPLES; i++) {
+        const pick = [...shown, ...shuffle(cards, rng).slice(0, TOP_CARDS - shown.length)];
+        total += envidoPoints(pick) - envidoPoints(plain(pick));
+      }
+      return total / LIFT_SAMPLES;
+    }));
+  }
+
   /** Poder del equipo: las mejores cartas que le quedan entre todos los companeros.
-   * El tramposo lo mide contra lo que tienen de verdad los rivales en vez de contra un rival promedio. */
+   * El tramposo lo mide contra lo que tienen de verdad los rivales en vez de contra un rival promedio.
+   * Si los rivales tienen cartas mejoradas, se descuenta lo que eso les suma. */
   function teamPower(view) {
     const own = topPower([...view.hand, ...partnerHands(view).flat()]);
-    if (!view.oppHands) return own;
+    if (!view.oppHands) return own - rivalPowerLift(view);
     return own - topPower(rivalHands(view).flat()) + AVERAGE_RIVAL_POWER;
   }
 
@@ -75,7 +134,7 @@
   function envidoEdge(view) {
     const ours = teamEnvido(view);
     const full = rivalHands(view).filter((h) => h.length === TOP_CARDS);
-    if (!full.length) return ours;
+    if (!full.length) return ours - rivalEnvidoLift(view);
     const theirs = Math.max(...full.map(envidoPoints));
     return ours >= theirs ? Math.max(ours, ENVIDO_REAL) : 0;
   }

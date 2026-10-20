@@ -16,16 +16,14 @@
   const SOFT_LOWPASS_HZ = 6000;
 
   // Notas en Hz.
-  const NOTE = { g4: 392, c4: 261.63, c5: 523.25, e5: 659.25, g5: 783.99 };
+  const NOTE = { c5: 523.25, e5: 659.25, g5: 783.99 };
 
   /** Samples por sonido: se elige una variante al azar para que no suene repetido. */
   const SAMPLES = {
     select: { files: ['select'], gain: 0.35 },
     deal: { files: ['deal-1', 'deal-2', 'deal-3', 'deal-4'], gain: 0.9 },
     play: { files: ['play-1', 'play-2', 'play-4'], gain: 1.2 },
-    envido: { files: ['envido'], gain: 0.8 },
     quiero: { files: ['quiero'], gain: 0.8 },
-    noquiero: { files: ['noquiero'], gain: 0.8 },
     mazo: { files: ['mazo'], gain: 1 },
     trickWin: { files: ['trick-win-1', 'trick-win-2'], gain: 1 },
     turn: { files: ['turn'], gain: 0.25 },
@@ -155,9 +153,7 @@
         tone(at, { freq: 150, to: 55, dur: 0.14, gain: 0.55 });
         hiss(at, { filter: 'lowpass', freq: 900, dur: 0.07, gain: 0.28 });
       },
-      envido: (at) => [880, 1318.5, 1760].forEach((freq, i) => tone(at, { freq, dur: 0.7 - i * 0.12, gain: 0.17 })),
       quiero: (at) => arpeggio(at, [NOTE.c5, NOTE.g5], { step: 0.1, dur: 0.18, gain: 0.16 }),
-      noquiero: (at) => arpeggio(at, [NOTE.g4, NOTE.c4], { step: 0.12, dur: 0.22, gain: 0.15 }),
       mazo: (at) => hiss(at, { freq: 2200, to: 450, q: 0.9, dur: 0.28, gain: 0.22 }),
       trickWin: (at) => arpeggio(at, [NOTE.c5, NOTE.e5, NOTE.g5], { step: 0.07, dur: 0.16, gain: 0.15 }),
       turn: (at) => tone(at, { freq: 660, type: 'sine', dur: 0.12, gain: 0.07 }),

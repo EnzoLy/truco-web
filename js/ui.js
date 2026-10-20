@@ -10,6 +10,7 @@
 
   function mount(opts = {}) {
     const { newGame, dealHand, step, viewFor, legalActions, TARGET, cardKey } = window.Truco;
+    const Act = window.TrucoActionButtons;
     const HUMAN = 0;
     const BOT = 1;
     const BOT_DELAY_MIN_MS = 700;
@@ -359,6 +360,9 @@
       return b;
     }
 
+    /** Botón de la botonera: con icono y una línea chica con lo que pasa (ver action-buttons.js). */
+    const actionButton = (label, cls, icon, sub, onClick) => Act.decorate(button(label, cls, onClick), { icon, sub });
+
     function onHandCard(index) {
       if (state.phase !== 'play' || state.turn !== HUMAN || botTimer) return;
       if (selected === index) return humanAct({ type: 'play', index });
@@ -389,7 +393,7 @@
 
     function envidoMenu(options) {
       const wrap = el('div', 'menu-wrap');
-      const trigger = button(ENVIDO_MENU_TITLE[state.phase] || 'Envido', 'cool menu-trigger', () => {});
+      const trigger = Act.decorate(button(ENVIDO_MENU_TITLE[state.phase] || 'Envido', 'cool menu-trigger', () => {}), { icon: 'envido' });
       trigger.append(el('span', 'caret'));
       trigger.setAttribute('aria-haspopup', 'menu');
       trigger.setAttribute('aria-expanded', 'false');
@@ -423,36 +427,55 @@
       return wrap;
     }
 
+    let actionsKey = '';
+
+    /** Las respuestas a un canto: Quiero / No quiero, cada una con lo que vale. */
+    function responseButtons() {
+      const T = window.Truco;
+      const p = state.pending;
+      const isTruco = state.phase === 'respond-truco';
+      const yes = isTruco ? Act.subs.trucoAccept(T, p.level) : Act.subs.envidoAccept(T, p.stack, state.scores);
+      const no = isTruco ? Act.subs.trucoReject(T, p.level) : Act.subs.envidoReject(T, p.stack, state.scores);
+      return [
+        actionButton('Quiero', 'primary', 'accept', yes, () => humanAct({ type: 'accept' })),
+        actionButton('No quiero', 'danger', 'reject', no, () => humanAct({ type: 'reject' })),
+      ];
+    }
+
     function renderActions() {
       const box = $('actions');
+      const showing = state.turn === HUMAN && !['hand-over', 'game-over', 'idle'].includes(state.phase);
+      const legal = showing ? legalActions(state, HUMAN) : [];
+      // Solo se rehace si cambió lo que se puede hacer: así los botones no se mueven bajo el dedo.
+      const key = JSON.stringify([state.phase, state.trucoLevel, state.pending && state.pending.level, legal]);
+      if (key === actionsKey) return;
+      actionsKey = key;
       box.replaceChildren();
-      if (state.phase === 'hand-over' || state.phase === 'game-over' || state.phase === 'idle') return;
-      if (state.turn !== HUMAN) return;
-      const legal = legalActions(state, HUMAN);
+      if (!showing) return;
       const nodes = [];
       const hasType = (t) => legal.filter((a) => a.type === t);
 
-      if (state.phase === 'respond-truco' || state.phase === 'respond-envido') {
-        nodes.push(button('Quiero', 'primary', () => humanAct({ type: 'accept' })));
-        nodes.push(button('No quiero', 'danger', () => humanAct({ type: 'reject' })));
-      }
+      if (state.phase === 'respond-truco' || state.phase === 'respond-envido') nodes.push(...responseButtons());
       if (hasType('truco').length) {
         const level = state.phase === 'respond-truco' ? state.pending.level + 1 : state.trucoLevel + 1;
         const label = state.phase === 'respond-truco' ? `Quiero ${TRUCO_NAMES[level].toLowerCase()}` : TRUCO_NAMES[level];
-        nodes.push(button(label, 'hot', () => humanAct({ type: 'truco' })));
+        nodes.push(actionButton(label, 'hot', 'truco', Act.subs.trucoCall(window.Truco, level), () => humanAct({ type: 'truco' })));
       }
       const envidos = hasType('envido');
       if (envidos.length === 1) {
         const name = ENVIDO_NAMES[envidos[0].what];
         const label = state.phase === 'respond-envido' ? `Subo: ${name.toLowerCase()}` : name;
-        nodes.push(button(label, 'cool', () => humanAct({ type: 'envido', what: envidos[0].what })));
+        nodes.push(actionButton(label, 'cool', 'envido', ENVIDO_MENU_HINT[envidos[0].what], () => humanAct({ type: 'envido', what: envidos[0].what })));
       } else if (envidos.length > 1) {
         nodes.push(envidoMenu(envidos));
       }
-      if (hasType('flor').length) nodes.push(button('Flor', 'cool', () => humanAct({ type: 'flor' })));
-      if (hasType('mazo').length) nodes.push(button('Mazo', 'ghost', () => humanAct({ type: 'mazo' })));
+      if (hasType('flor').length) nodes.push(actionButton('Flor', 'cool flor', 'flor', 'Tres puntos', () => humanAct({ type: 'flor' })));
+      if (hasType('mazo').length) {
+        nodes.push(Act.confirmFirst(actionButton('Mazo', 'ghost', 'mazo', 'Perdés la mano', () => {}), () => humanAct({ type: 'mazo' })));
+      }
       nodes.forEach((n, i) => n.style.setProperty('--i', String(i)));
       box.append(...nodes);
+      Act.arm(box);
     }
 
     function humanPrompt() {
@@ -561,14 +584,9 @@
         case 'truco-call':
           fx.knock(ev.level);
           break;
-        case 'envido-call':
-        case 'flor':
-          Sound.play('envido');
-          break;
         case 'truco-response':
         case 'envido-response':
           if (ev.response === 'accept') Sound.play('quiero');
-          else if (ev.response === 'reject') Sound.play('noquiero');
           break;
         case 'mazo':
           Sound.play('mazo');

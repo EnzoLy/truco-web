@@ -2,7 +2,8 @@
  * hover con mouse, o tocar el icono en el celular (queda hasta tocar otra cosa). Tocar el icono no
  * selecciona ni tira la carta. Lo usan la mesa 1v1 (ui.js) y la de 4 (sala-table.js).
  * También arma la vista en grande de una carta jugada, con sus mejoras escritas.
- * TrucoCardBadges.decorate(node, card, name) · peekable(node, { card, name, caption }) · dropStaleTip() */
+ * TrucoCardBadges.decorate(node, card, name) · peekable(node, { card, name, caption }) · dropStaleTip()
+ * TrucoCardBadges.ICONS: los iconos de mejora (rank, envido), que también usa la tienda. */
 (function () {
   'use strict';
 
@@ -165,5 +166,5 @@
     if (peekAnchor && !peekAnchor.isConnected) hidePeek();
   }
 
-  window.TrucoCardBadges = { decorate, peekable, dropStaleTip };
+  window.TrucoCardBadges = { ICONS, decorate, peekable, dropStaleTip };
 })();

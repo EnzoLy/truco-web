@@ -23,12 +23,13 @@
   const MAX_AMULETS = 5;
   const SHOP_AMULETS = 3;
   const SHOP_UPGRADES = 2;
-  const REROLL_BASE = 2;
+  const REROLL_BASE = 3;
   const BOSS_EVERY = 4;
-  const UPGRADE_PRICE = 3;
+  const UPGRADE_PRICE = 4;
   const FILO_STEP = 3;
   const MAX_UPGRADED_RANK = 13.5; // entre el ancho de basto y el de espada
   const BRILLO_ENVIDO = 7;
+  const BOLA_EVERY = 3; // la bola de cristal muestra la mano del rival en una de cada 3 manos
   const BASE_SAMPLES = 60;
   const SAMPLES_PER_ROUND = 15;
   const MAX_SAMPLES = 200;
@@ -51,21 +52,23 @@
     T.makeDeck().filter((c) => c.num >= 10).map((c) => [T.cardKey(c), { envido: 3 }]),
   );
 
-  /** kind: puntaje | economia | cartas | info. mods van al motor; econ lo usa la economia de la run. */
+  /** kind: puntaje | economia | cartas | info. mods van al motor; econ lo usa la economia de la run.
+   *  Precios según cuánto suben la chance de ganar (simulación bot contra bot, base 52%): una partida ganada
+   *  paga ~27 monedas, así que cada tienda obliga a elegir. */
   const AMULETS = {
-    'pico-de-oro': { name: 'Pico de oro', desc: '+1 punto cada vez que ganás una mano con truco.', price: 6, kind: 'puntaje', mods: { trucoBonus: 1 } },
-    cantor: { name: 'Cantor', desc: '+1 punto cada vez que ganás un envido.', price: 5, kind: 'puntaje', mods: { envidoBonus: 1 } },
-    garganta: { name: 'Garganta de lata', desc: 'Sumás +2 al contar tu envido.', price: 6, kind: 'puntaje', mods: { envidoCountBonus: 2 } },
-    flor: { name: 'Flor', desc: 'Podés cantar flor (tres cartas del mismo palo): 3 puntos y se anula el envido. Sin este amuleto no hay flor.', price: 5, kind: 'puntaje', mods: { flor: true } },
-    alcancia: { name: 'Alcancía', desc: 'El interés puede llegar hasta 10 monedas.', price: 4, kind: 'economia', econ: { interestCap: 5 } },
-    propina: { name: 'Propina', desc: '+1 moneda por cada mano que ganás.', price: 5, kind: 'economia', econ: { handCoin: 1 } },
-    cuentero: { name: 'Cuentero', desc: '+2 monedas por cada envido que ganás.', price: 4, kind: 'economia', econ: { envidoCoin: 2 } },
-    'sietes-bravos': { name: 'Sietes bravos', desc: 'El 7 de copa y el 7 de basto matan como un 3.', price: 6, kind: 'cartas', mods: { upgrades: { '7copa': { rank: 10 }, '7basto': { rank: 10 } } } },
+    'pico-de-oro': { name: 'Pico de oro', desc: '+1 punto cada vez que ganás una mano con truco.', price: 12, kind: 'puntaje', mods: { trucoBonus: 1 } },
+    cantor: { name: 'Cantor', desc: '+1 punto cada vez que ganás un envido.', price: 11, kind: 'puntaje', mods: { envidoBonus: 1 } },
+    garganta: { name: 'Garganta de lata', desc: 'Sumás +1 al contar tu envido.', price: 8, kind: 'puntaje', mods: { envidoCountBonus: 1 } },
+    flor: { name: 'Flor', desc: 'Podés cantar flor (tres cartas del mismo palo): 3 puntos y se anula el envido. Sin este amuleto no hay flor.', price: 10, kind: 'puntaje', mods: { flor: true } },
+    alcancia: { name: 'Alcancía', desc: 'El interés puede llegar hasta 10 monedas.', price: 8, kind: 'economia', econ: { interestCap: 5 } },
+    propina: { name: 'Propina', desc: '+1 moneda por cada mano que ganás.', price: 15, kind: 'economia', econ: { handCoin: 1 } },
+    cuentero: { name: 'Cuentero', desc: '+2 monedas por cada envido que ganás.', price: 9, kind: 'economia', econ: { envidoCoin: 2 } },
+    'sietes-bravos': { name: 'Sietes bravos', desc: 'El 7 de copa y el 7 de basto matan como un 3.', price: 10, kind: 'cartas', mods: { upgrades: { '7copa': { rank: 10 }, '7basto': { rank: 10 } } } },
     'ancho-falso': { name: 'Ancho falso', desc: 'El 1 de oro y el 1 de copa valen como el ancho de basto.', price: 8, kind: 'cartas', mods: { upgrades: { '1oro': { rank: 13 }, '1copa': { rank: 13 } } } },
-    figuras: { name: 'Figuras con onda', desc: 'El 10, el 11 y el 12 valen 3 para el envido.', price: 6, kind: 'cartas', mods: { upgrades: figures() } },
-    espejito: { name: 'Espejito', desc: 'Ves la primera carta que recibió el rival.', price: 5, kind: 'info', mods: { peek: 'one' } },
-    'oido-fino': { name: 'Oído fino', desc: 'Sabés si el rival tiene más de 27 de envido.', price: 3, kind: 'info', mods: { envidoHint: true } },
-    'bola-de-cristal': { name: 'Bola de cristal', desc: 'Ves toda la mano del rival.', price: 14, kind: 'info', mods: { peek: 'all' } },
+    figuras: { name: 'Figuras con onda', desc: 'El 10, el 11 y el 12 valen 3 para el envido.', price: 9, kind: 'cartas', mods: { upgrades: figures() } },
+    espejito: { name: 'Espejito', desc: 'Ves la primera carta que recibió el rival.', price: 7, kind: 'info', mods: { peek: 'one' } },
+    'oido-fino': { name: 'Oído fino', desc: 'Sabés si el rival tiene más de 27 de envido.', price: 5, kind: 'info', mods: { envidoHint: true } },
+    'bola-de-cristal': { name: 'Bola de cristal', desc: 'Cada 3 manos ves la mano completa del rival.', price: 16, kind: 'info', mods: { peekEvery: BOLA_EVERY } },
   };
   const AMULET_IDS = Object.keys(AMULETS);
   // Los rivales solo llevan amuletos de puntaje y cartas: la economia no les sirve y el bot no lee pistas.

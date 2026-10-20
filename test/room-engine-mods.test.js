@@ -165,3 +165,13 @@ test('el rival tramposo (peek all) ve las manos de los dos rivales en su vista d
   const view = Room.viewFor(s, 1, { team: true });
   assert.deepEqual(view.oppHands.map((o) => o.seat), [0, 2]);
 });
+
+test('peekEvery muestra las manos de los rivales solo en una de cada N manos', () => {
+  const s = setup([{ peekEvery: 3, peek: 'one' }, NONE, NONE, NONE], HANDS);
+  s.handNo = 6;
+  assert.deepEqual(Room.viewFor(s, 0).oppHands.map((o) => o.seat), [1, 3]);
+  s.handNo = 7;
+  const v = Room.viewFor(s, 0);
+  assert.equal(v.oppHands, undefined);
+  assert.deepEqual(v.oppPeeks.map((o) => o.seat), [1, 3]);
+});

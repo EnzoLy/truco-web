@@ -11,6 +11,14 @@
   const END_DELAY_MS = 1400;
   const COIN_POP_MS = 1200;
   const KIND_NAMES = { puntaje: 'Puntaje', economia: 'Economía', cartas: 'Cartas', info: 'Información', mejora: 'Mejora' };
+  // Un icono por tipo de amuleto para la tienda: estrella (puntos), monedas, naipes, ojo.
+  const KIND_ICONS = {
+    puntaje: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 16.9 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z"/></svg>',
+    economia: '<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 9.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12c0 1.7-3.6 3-8 3s-8-1.3-8-3zm0 5c0 1.7 3.6 3 8 3s8-1.3 8-3V17c0 1.7-3.6 3-8 3s-8-1.3-8-3z"/></svg>',
+    cartas: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 6.3l6-1.6 3.6 13.5-6 1.6z"/><path d="M11 3h7a1.5 1.5 0 0 1 1.5 1.5v14A1.5 1.5 0 0 1 18 20h-3.3L11 6.2z" opacity=".7"/></svg>',
+    info: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5C6.5 5 2.6 9.4 1.5 12c1.1 2.6 5 7 10.5 7s9.4-4.4 10.5-7C21.4 9.4 17.5 5 12 5zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/><circle cx="12" cy="12" r="2"/></svg>',
+  };
+  const UPGRADE_NAMES = { rank: 'Filo', envido: 'Brillo' };
   const PAGES = { solo: '/arcade', duo: '/arcade-duo' };
   const rng = Math.random;
 
@@ -155,48 +163,93 @@
       table.newMatch(run);
     }
 
-    function shopItemNode(item, index) {
-      const node = el('div', `shop-item${item.sold ? ' sold' : ''}`);
-      if (item.type === 'amulet') {
-        const a = A.AMULETS[item.id];
-        node.classList.add(`kind-${a.kind}`);
-        node.append(el('span', 'shop-kind', KIND_NAMES[a.kind]), el('b', 'shop-name', a.name), el('p', 'shop-desc', a.desc));
-      } else {
-        node.classList.add('kind-mejora');
-        const card = A.parseKey(item.key);
-        const art = el('img', 'shop-card');
-        art.src = window.CardArt.url(card);
-        art.alt = A.cardName(card);
-        node.append(el('span', 'shop-kind', KIND_NAMES.mejora), art, el('b', 'shop-name', item.name), el('p', 'shop-desc', item.desc));
-      }
+    // ---------- tienda ----------
+
+    const iconNode = (cls, svg) => {
+      const n = el('span', cls);
+      n.innerHTML = svg;
+      n.setAttribute('aria-hidden', 'true');
+      return n;
+    };
+
+    /** Botón de compra: precio, o por qué no se puede ("Te faltan 3", "Bolsillo lleno"). */
+    function buyButton(item, index, okMessage) {
       const reason = A.cantBuy(run, index);
-      const btn = el('button', 'btn primary shop-buy', item.sold ? 'Comprado' : `Comprar · ${item.price}`);
+      const short = run.coins < item.price ? `Te faltan ${item.price - run.coins}` : 'Bolsillo lleno';
+      const label = item.sold ? 'Comprado' : reason ? short : 'Comprar';
+      const btn = el('button', 'shop-buy');
       btn.type = 'button';
       btn.disabled = Boolean(reason);
-      if (reason && !item.sold) btn.title = reason;
-      btn.addEventListener('click', () => shopAction(() => A.buy(run, index), item.type === 'amulet' ? `¡${A.AMULETS[item.id].name} es tuyo!` : '¡Carta mejorada!'));
-      node.append(btn);
+      btn.append(el('span', 'shop-buy-label', label));
+      if (!item.sold) {
+        const price = el('span', 'price');
+        price.append(el('span', 'coin-ico'), el('b', '', String(item.price)));
+        btn.append(price);
+      }
+      btn.setAttribute('aria-label', item.sold ? 'Comprado' : `${label}: ${item.price} monedas`);
+      btn.addEventListener('click', () => shopAction(() => A.buy(run, index), okMessage));
+      return btn;
+    }
+
+    function amuletOffer(item, index) {
+      const a = A.AMULETS[item.id];
+      const node = el('article', `offer kind-${a.kind}${item.sold ? ' sold' : ''}`);
+      node.style.setProperty('--i', String(index));
+      const top = el('div', 'offer-top');
+      top.append(iconNode('offer-icon', KIND_ICONS[a.kind]), el('span', 'offer-kind', KIND_NAMES[a.kind]));
+      node.append(top, el('h4', 'offer-name', a.name), el('p', 'offer-desc', a.desc), buyButton(item, index, `¡${a.name} es tuyo!`));
+      if (item.sold) node.append(el('span', 'stamp', 'Comprado'));
+      return node;
+    }
+
+    function upgradeOffer(item, index) {
+      const card = A.parseKey(item.key);
+      const node = el('article', `up-offer up-${item.field}${item.sold ? ' sold' : ''}`);
+      node.style.setProperty('--i', String(index));
+      const art = el('div', 'up-art');
+      const img = el('img');
+      img.src = window.CardArt.url(card);
+      img.alt = A.cardName(card);
+      art.append(img, iconNode(`up-badge up-${item.field}`, window.TrucoCardBadges.ICONS[item.field]));
+      const effect = item.field === 'rank' ? `En el truco ${A.rankText(item.value)}.` : `Vale ${item.value} para el envido.`;
+      const text = el('div', 'up-text');
+      text.append(el('h4', 'offer-name', `${UPGRADE_NAMES[item.field]} · ${A.cardName(card)}`), el('p', 'offer-desc', effect));
+      node.append(art, text, buyButton(item, index, '¡Carta mejorada!'));
+      return node;
+    }
+
+    function ownedSlot(id) {
+      if (!id) return el('div', 'slot-free', 'Lugar libre');
+      const a = A.AMULETS[id];
+      const node = el('div', `owned kind-${a.kind}`);
+      const info = el('button', 'owned-info');
+      info.type = 'button';
+      info.title = a.desc;
+      info.append(iconNode('offer-icon', KIND_ICONS[a.kind]), el('span', 'owned-name', a.name));
+      info.addEventListener('click', () => { $('shop-msg').textContent = `${a.name}: ${a.desc}`; });
+      const sell = el('button', 'owned-sell', `Vender +${A.sellPrice(id)}`);
+      sell.type = 'button';
+      sell.addEventListener('click', () => shopAction(() => A.sell(run, id), `Vendiste ${a.name}.`));
+      node.append(info, sell);
       return node;
     }
 
     function renderShop() {
-      $('shop-coins').textContent = String(run.coins);
-      $('shop-items').replaceChildren(...run.shop.items.map(shopItemNode));
-      $('shop-owned-title').textContent = `Tus amuletos (${run.amulets.length}/${A.MAX_AMULETS})`;
-      $('shop-owned').replaceChildren(...(run.amulets.length
-        ? run.amulets.map((id) => {
-          const row = el('div', 'owned');
-          const sell = el('button', 'btn ghost mini', `Vender · ${A.sellPrice(id)}`);
-          sell.type = 'button';
-          sell.addEventListener('click', () => shopAction(() => A.sell(run, id), `Vendiste ${A.AMULETS[id].name}.`));
-          row.append(amuletChip(id, () => { $('shop-msg').textContent = A.AMULETS[id].desc; }), sell);
-          return row;
-        })
-        : [el('p', 'shop-empty', 'Ninguno todavía.')]));
-      const cost = A.rerollCost(run);
-      $('shop-reroll').textContent = `Cambiar ofertas · ${cost}`;
-      $('shop-reroll').disabled = run.coins < cost;
       const next = run.round + 1;
+      const interest = A.interestOf(run);
+      $('shop-eyebrow').textContent = `Antes de la ronda ${next}${A.isBossRound(next) ? ' · Jefe' : ''}`;
+      $('shop-coins').textContent = String(run.coins);
+      $('shop-coins').parentElement.dataset.interest = interest ? `+${interest} de interés si ganás` : 'Ahorrá 5 y cobrás interés';
+      const items = run.shop.items.map((item, index) => ({ item, index }));
+      $('shop-items').replaceChildren(...items.filter((x) => x.item.type === 'amulet').map((x) => amuletOffer(x.item, x.index)));
+      const ups = items.filter((x) => x.item.type === 'upgrade');
+      $('shop-ups').replaceChildren(...(ups.length ? ups.map((x) => upgradeOffer(x.item, x.index)) : [el('p', 'shop-empty', 'Hoy no hay mejoras.')]));
+      $('shop-owned-title').replaceChildren(document.createTextNode('Tu bolsillo '), el('span', '', `${run.amulets.length} de ${A.MAX_AMULETS} lugares`));
+      const slots = Array.from({ length: A.MAX_AMULETS }, (_, i) => run.amulets[i] || null);
+      $('shop-owned').replaceChildren(...slots.map(ownedSlot));
+      const cost = A.rerollCost(run);
+      $('shop-reroll').textContent = `Otras ofertas · ${cost}`;
+      $('shop-reroll').disabled = run.coins < cost;
       $('shop-next').textContent = A.isBossRound(next) ? `Ronda ${next}: jefe` : `Ronda ${next}`;
     }
 
