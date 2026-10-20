@@ -1,5 +1,5 @@
 /* Sonidos de la mesa con Web Audio.
-   Con fetchImpl + baseUrl usa samples reales (cartas y fichas del pack "Casino Audio" de Kenney, CC0,
+   Con fetchImpl + baseUrl usa samples reales (cartas de "Casino Audio" y monedas de "RPG Audio", de Kenney, CC0,
    ver sounds/LICENSE-kenney.txt); mientras cargan, o si fallan, suena la version sintetizada.
    El contexto se crea recien con el primer gesto del usuario (politica de autoplay). */
 (function (root) {
@@ -9,28 +9,26 @@
   const MASTER_GAIN = 0.55;
   const NOISE_SECONDS = 1;
   const SILENCE = 0.0001;
-  const MAX_KNOCKS = 3;
-  const KNOCK_STEP_S = 0.15;
+  // Cada toque sale con el tono y el volumen apenas distintos, para que no suene a ametralladora.
+  const RATE_JITTER = 0.05;
+  const GAIN_JITTER = 0.1;
+  // Corta los agudos ásperos de todo lo que suena.
+  const SOFT_LOWPASS_HZ = 6000;
 
   // Notas en Hz.
-  const NOTE = { g4: 392, c5: 523.25, e5: 659.25, g5: 783.99, c6: 1046.5, eb4: 311.13, f4: 349.23, c4: 261.63 };
+  const NOTE = { g4: 392, c4: 261.63, c5: 523.25, e5: 659.25, g5: 783.99 };
 
   /** Samples por sonido: se elige una variante al azar para que no suene repetido. */
   const SAMPLES = {
-    select: { files: ['select'], gain: 0.6 },
+    select: { files: ['select'], gain: 0.35 },
     deal: { files: ['deal-1', 'deal-2', 'deal-3', 'deal-4'], gain: 0.9 },
     play: { files: ['play-1', 'play-2', 'play-4'], gain: 1.2 },
-    knock: { files: ['truco-1', 'truco-4', 'truco-6'], gain: 1.1 }, // una ficha a la mesa por nivel de truco
     envido: { files: ['envido'], gain: 0.8 },
     quiero: { files: ['quiero'], gain: 0.8 },
     noquiero: { files: ['noquiero'], gain: 0.8 },
     mazo: { files: ['mazo'], gain: 1 },
-    trickWin: { files: ['trick-win-1', 'trick-win-2', 'trick-win-3'], gain: 1.1 },
-    trickLoss: { files: ['trick-loss'], gain: 0.9 },
-    point: { files: ['point-1', 'point-3'], gain: 1 },
-    turn: { files: ['turn'], gain: 0.5 },
-    win: { files: ['win'], gain: 0.9 },
-    lose: { files: ['lose'], gain: 0.8 },
+    trickWin: { files: ['trick-win-1', 'trick-win-2'], gain: 1 },
+    turn: { files: ['turn'], gain: 0.25 },
   };
 
   function createSound({ AudioContextCtor, storage, fetchImpl, baseUrl }) {
@@ -61,25 +59,24 @@
       });
     }
 
+    const spread = (amount) => 1 + (Math.random() * 2 - 1) * amount;
+
     function playSample(at, buffer, gain) {
       const src = ctx.createBufferSource();
       const amp = ctx.createGain();
       src.buffer = buffer;
-      amp.gain.value = gain;
+      if (src.playbackRate) src.playbackRate.value = spread(RATE_JITTER);
+      amp.gain.value = gain * spread(GAIN_JITTER);
       src.connect(amp).connect(master);
       src.start(at);
     }
 
     /** true si lo pudo tocar con samples. */
-    function trySample(name, at, opts) {
+    function trySample(name, at) {
       const def = SAMPLES[name];
       const ready = def ? def.files.filter((f) => buffers.has(f)) : [];
       if (!ready.length) return false;
-      const hits = name === 'knock' ? Math.min(Math.max(opts.level || 1, 1), MAX_KNOCKS) : 1;
-      for (let i = 0; i < hits; i++) {
-        const file = ready[(Math.floor(Math.random() * ready.length) + i) % ready.length];
-        playSample(at + i * KNOCK_STEP_S, buffers.get(file), def.gain);
-      }
+      playSample(at, buffers.get(ready[Math.floor(Math.random() * ready.length)]), def.gain);
       return true;
     }
 
@@ -98,7 +95,10 @@
         }
         master = ctx.createGain();
         master.gain.value = MASTER_GAIN;
-        master.connect(ctx.destination);
+        const soft = ctx.createBiquadFilter();
+        soft.type = 'lowpass';
+        soft.frequency.value = SOFT_LOWPASS_HZ;
+        master.connect(soft).connect(ctx.destination);
         noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * NOISE_SECONDS), ctx.sampleRate);
         const data = noise.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -144,12 +144,6 @@
     const arpeggio = (at, notes, { step, type = 'triangle', dur, gain }) =>
       notes.forEach((freq, i) => tone(at + i * step, { freq, type, dur, gain }));
 
-    /** Golpe de nudillo sobre la mesa de madera. */
-    const knock = (at) => {
-      tone(at, { freq: 190, to: 80, dur: 0.11, gain: 0.7 });
-      hiss(at, { filter: 'lowpass', freq: 700, dur: 0.05, gain: 0.3 });
-    };
-
     const SOUNDS = {
       select: (at) => {
         tone(at, { freq: 900, to: 650, type: 'triangle', dur: 0.05, gain: 0.12 });
@@ -161,27 +155,12 @@
         tone(at, { freq: 150, to: 55, dur: 0.14, gain: 0.55 });
         hiss(at, { filter: 'lowpass', freq: 900, dur: 0.07, gain: 0.28 });
       },
-      // Truco: un golpe en la mesa por cada nivel (truco, retruco, vale cuatro).
-      knock: (at, { level = 1 } = {}) => {
-        for (let i = 0; i < Math.min(Math.max(level, 1), MAX_KNOCKS); i++) knock(at + i * KNOCK_STEP_S);
-      },
       envido: (at) => [880, 1318.5, 1760].forEach((freq, i) => tone(at, { freq, dur: 0.7 - i * 0.12, gain: 0.17 })),
       quiero: (at) => arpeggio(at, [NOTE.c5, NOTE.g5], { step: 0.1, dur: 0.18, gain: 0.16 }),
       noquiero: (at) => arpeggio(at, [NOTE.g4, NOTE.c4], { step: 0.12, dur: 0.22, gain: 0.15 }),
       mazo: (at) => hiss(at, { freq: 2200, to: 450, q: 0.9, dur: 0.28, gain: 0.22 }),
       trickWin: (at) => arpeggio(at, [NOTE.c5, NOTE.e5, NOTE.g5], { step: 0.07, dur: 0.16, gain: 0.15 }),
-      trickLoss: (at) => tone(at, { freq: 300, to: 190, type: 'triangle', dur: 0.2, gain: 0.12 }),
-      // Un fosforo que se raspa y prende.
-      point: (at) => {
-        hiss(at, { freq: 1500, to: 4200, q: 1.2, dur: 0.14, gain: 0.16 });
-        hiss(at + 0.12, { filter: 'highpass', freq: 5000, dur: 0.03, gain: 0.1 });
-      },
       turn: (at) => tone(at, { freq: 660, type: 'sine', dur: 0.12, gain: 0.07 }),
-      win: (at) => {
-        arpeggio(at, [NOTE.c5, NOTE.e5, NOTE.g5, NOTE.c6], { step: 0.11, dur: 0.3, gain: 0.17 });
-        tone(at + 0.44, { freq: NOTE.c6 * 2, dur: 0.9, gain: 0.08 });
-      },
-      lose: (at) => arpeggio(at, [NOTE.g4, NOTE.f4, NOTE.eb4, NOTE.c4], { step: 0.2, type: 'sawtooth', dur: 0.35, gain: 0.07 }),
     };
 
     return {
@@ -191,7 +170,7 @@
         const sound = SOUNDS[name];
         if (!unlocked || muted || !sound || !ensure()) return;
         const at = ctx.currentTime + (opts.delay || 0);
-        if (!trySample(name, at, opts)) sound(at, opts);
+        if (!trySample(name, at)) sound(at);
       },
       /** Llamar desde un gesto del usuario. Antes de eso no suena nada, y lo programado antes se descarta. */
       unlock() {

@@ -39,7 +39,7 @@ test('plays every named sound without throwing', () => {
   const sound = createSound({ AudioContextCtor: FakeContext, storage: memoryStorage() });
   sound.unlock();
   assert.ok(sound.names.length > 0);
-  for (const name of sound.names) assert.doesNotThrow(() => sound.play(name, { level: 3, delay: 0.2 }), name);
+  for (const name of sound.names) assert.doesNotThrow(() => sound.play(name, { delay: 0.2 }), name);
 });
 
 test('does not create an audio context until a sound is requested', () => {
@@ -66,6 +66,11 @@ test('remembers the mute choice in storage', () => {
   assert.equal(reloaded.isMuted(), true);
   reloaded.setMuted(false);
   assert.equal(createSound({ AudioContextCtor: fakeAudio().FakeContext, storage }).isMuted(), false);
+});
+
+test('no tiene sonido para el truco, perder baza, sumar puntos ni el fin de la partida', () => {
+  const sound = createSound({ AudioContextCtor: fakeAudio().FakeContext, storage: memoryStorage() });
+  for (const name of ['knock', 'trickLoss', 'point', 'win', 'lose']) assert.ok(!sound.names.includes(name), name);
 });
 
 test('ignores unknown sound names', () => {
@@ -102,29 +107,21 @@ test('resumes a suspended context on unlock', () => {
   assert.equal(log.resumed, 1);
 });
 
-test('knock plays one hit per truco level, capped at three', () => {
-  const { FakeContext, log } = fakeAudio();
-  const sound = createSound({ AudioContextCtor: FakeContext, storage: memoryStorage() });
-  sound.unlock();
-  const base = log.oscillators;
-  sound.play('knock', { level: 1 });
-  const one = log.oscillators - base;
-  sound.play('knock', { level: 3 });
-  assert.equal(log.oscillators - one, one * 3);
-  const before = log.oscillators;
-  sound.play('knock', { level: 9 });
-  assert.equal(log.oscillators - before, one * 3);
-});
-
 // ---------- samples (pack de Kenney, CC0) ----------
 
 function sampleAudio() {
   const { FakeContext, log } = fakeAudio();
   log.buffers = [];
+  log.rates = [];
   class SampleContext extends FakeContext {
     createBufferSource() {
       const src = super.createBufferSource();
-      src.start = () => { if (src.buffer && src.buffer.sample) log.buffers.push(src.buffer.sample); };
+      src.playbackRate = { value: 1 };
+      src.start = () => {
+        if (!src.buffer || !src.buffer.sample) return;
+        log.buffers.push(src.buffer.sample);
+        log.rates.push(src.playbackRate.value);
+      };
       return src;
     }
     decodeAudioData(data) { return Promise.resolve({ sample: data.name, duration: 0.3 }); }
@@ -165,14 +162,21 @@ test('cada sonido del juego tiene su sample', async () => {
   }
 });
 
-test('el truco con samples suena una ficha por nivel, hasta tres', async () => {
-  const { SampleContext, log, fetchImpl } = sampleAudio();
-  const sound = createSound({ AudioContextCtor: SampleContext, storage: memoryStorage(), fetchImpl, baseUrl: 'sounds' });
+async function readySound() {
+  const audio = sampleAudio();
+  const sound = createSound({ AudioContextCtor: audio.SampleContext, storage: memoryStorage(), fetchImpl: audio.fetchImpl, baseUrl: 'sounds' });
   sound.unlock();
   await flush();
-  const before = log.buffers.length;
-  sound.play('knock', { level: 9 });
-  assert.equal(log.buffers.length - before, 3);
+  return { sound, log: audio.log };
+}
+
+const semitones = (rate) => 12 * Math.log2(rate);
+
+test('cada carta suena con el tono apenas distinto para que no suene repetido', async () => {
+  const { sound, log } = await readySound();
+  for (let i = 0; i < 40; i++) sound.play('play');
+  assert.ok(log.rates.every((r) => Math.abs(semitones(r)) <= 1), 'nunca se aleja más de un semitono');
+  assert.ok(new Set(log.rates).size > 1, 'no siempre igual');
 });
 
 test('si un sample no carga, ese sonido vuelve al sintetizado', async () => {
