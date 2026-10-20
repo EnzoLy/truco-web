@@ -22,8 +22,6 @@
     const THROW_DX = 70;
     const THROW_ROT = 36;
     const DEAL_STEP_S = 0.12;
-    const POINT_STEP_S = 0.14;
-    const MAX_POINT_TICKS = 5;
     const SCORE_FX_MS = 1100;
     const CONFETTI_COUNT = 42;
     const CONFETTI_CLEANUP_MS = 4800;
@@ -85,42 +83,13 @@
     }
 
     function cardFace(card, asButton) {
-      const node = el(asButton ? 'button' : 'div', card.up ? 'card upgraded' : 'card');
+      const node = el(asButton ? 'button' : 'div', 'card');
       if (asButton) node.type = 'button';
-      const notes = upgradeNotes(card.up);
-      const label = notes.length ? `${cardName(card)}. ${notes.map((n) => n.text).join('. ')}` : cardName(card);
-      if (!notes.length) node.title = label; // con mejoras, el detalle lo da el tooltip de cada icono
-      node.setAttribute('aria-label', label);
+      node.title = cardName(card);
+      node.setAttribute('aria-label', cardName(card));
       node.append(cardImage(window.CardArt.url(card), cardName(card)));
-      if (notes.length) node.append(upgradeBadges(notes));
+      if (card.up && window.TrucoCardBadges) window.TrucoCardBadges.decorate(node, card, cardName(card));
       return node;
-    }
-
-    // Iconos de mejora dentro de la carta: espada = truco, chispa = envido.
-    const ICONS = {
-      rank: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 3H21v6.5L10 20.5l-2-2L19 7.5V5h-2.5L5.5 16l-2-2zM4 17.5l2.5 2.5L4 22.5 1.5 20z"/></svg>',
-      envido: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5l2.6 7.9 7.9 2.6-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z"/></svg>',
-    };
-
-    const rankPhrase = (rank) => (window.TrucoArcade && window.TrucoArcade.rankText ? window.TrucoArcade.rankText(rank) : 'mata más fuerte');
-
-    function upgradeNotes(up) {
-      if (!up) return [];
-      const notes = [];
-      if (typeof up.rank === 'number') notes.push({ kind: 'rank', text: `Mejora de truco: ${rankPhrase(up.rank)}` });
-      if (typeof up.envido === 'number') notes.push({ kind: 'envido', text: `Mejora de envido: vale ${up.envido}` });
-      return notes;
-    }
-
-    function upgradeBadges(notes) {
-      const box = el('span', 'up-badges');
-      notes.forEach((n) => {
-        const badge = el('span', `up-badge up-${n.kind}`);
-        badge.innerHTML = ICONS[n.kind];
-        fx.tooltip(badge, n.text);
-        box.append(badge);
-      });
-      return box;
     }
 
     const cardBack = () => {
@@ -253,7 +222,6 @@
       pop.setAttribute('aria-hidden', 'true');
       row.append(pop);
       setTimeout(() => { pop.remove(); row.classList.remove('scored'); }, SCORE_FX_MS);
-      for (let i = 0; i < Math.min(gained, MAX_POINT_TICKS); i++) Sound.play('point', { delay: 0.1 + i * POINT_STEP_S });
     }
 
     let dealtHandNo = -1;
@@ -559,7 +527,7 @@
       renderStatus();
       renderInsights();
       renderLog();
-      fx.dropStaleTip();
+      if (window.TrucoCardBadges) window.TrucoCardBadges.dropStaleTip();
       const myTurn = state.turn === HUMAN && ['play', 'respond-truco', 'respond-envido'].includes(state.phase);
       $('seat-you').classList.toggle('turn', myTurn);
       if (myTurn && !wasMyTurn) Sound.play('turn', { delay: 0.35 });
@@ -591,7 +559,6 @@
           Sound.play('play');
           break;
         case 'truco-call':
-          Sound.play('knock', { level: ev.level });
           fx.knock(ev.level);
           break;
         case 'envido-call':
@@ -608,7 +575,7 @@
           break;
         case 'trick':
           if (ev.winner === -1) break;
-          Sound.play(ev.winner === HUMAN ? 'trickWin' : 'trickLoss', { delay: TRICK_FX_MS / 1000 });
+          if (ev.winner === HUMAN) Sound.play('trickWin', { delay: TRICK_FX_MS / 1000 });
           setTimeout(() => fx.sparks(ev.winner === HUMAN), TRICK_FX_MS);
           break;
         case 'hand-end':
@@ -747,7 +714,6 @@
 
     function showEnd() {
       const won = state.winner === HUMAN;
-      Sound.play(won ? 'win' : 'lose');
       if (won) confetti();
       if (opts.onGameEnd && opts.onGameEnd(state)) return;
       $('end-title').textContent = won ? '¡Ganaste la partida!' : 'Ganó el bot';

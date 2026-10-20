@@ -73,6 +73,30 @@ test('si se borra la run local pero queda la identidad, vuelve desde el servidor
   });
 });
 
+test('solo y dúo guardan cada uno su run, con identidades distintas, y el servidor acepta las dos', async () => {
+  await withServer(async (fetchImpl) => {
+    const storage = memoryStorage();
+    const make = (slot) => createRunStore({ storage, fetchImpl, runVersion: A.RUN_VERSION, slot, setTimer: () => 0, clearTimer: () => {}, log: quiet });
+    const solo = make('solo');
+    const duo = make('duo');
+    await solo.load();
+    await duo.load();
+    solo.save({ ...A.newRun(seeded(1)), coins: 7 });
+    duo.save({ ...A.newRun(seeded(2), { mode: 'duo' }), coins: 9 });
+    await solo.flush();
+    await duo.flush();
+    const { SLOTS } = require('../js/arcade-store.js');
+    assert.notEqual(storage.getItem(SLOTS.solo.id), storage.getItem(SLOTS.duo.id));
+    // Sin copias locales, cada una vuelve desde el servidor por su lado.
+    storage.removeItem(SLOTS.solo.run);
+    storage.removeItem(SLOTS.duo.run);
+    assert.equal((await make('solo').load()).coins, 7);
+    const back = await make('duo').load();
+    assert.equal(back.coins, 9);
+    assert.equal(back.mode, 'duo');
+  });
+});
+
 test('dos pestañas: gana la ultima en guardar', async () => {
   await withServer(async (fetchImpl) => {
     const storage = memoryStorage();

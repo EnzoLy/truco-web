@@ -5,20 +5,33 @@
  *  - duel:  asientos 0 y 1, cada uno su equipo.
  *  - trio:  el mano recibe 4 cartas, descarta 1 y juega solo contra los otros dos (que son equipo).
  *           El rol de solitario rota con el mano. Cada asiento lleva su propio puntaje.
- *  - dupla: asientos 0,2 contra 1,3. */
+ *  - dupla: asientos 0,2 contra 1,3.
+ *
+ * Amuletos (arcade dúo): newGame(mode, rng, { mods }) con un mods por asiento, mismo formato que engine.js.
+ * El bonus de un amuleto cuenta solo si el punto lo ganó su dueño (cantó el truco o tuvo el mejor envido),
+ * y la flor se canta solo con el amuleto (no hay consulta al mazo). */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'));
   else root.TrucoRoom = factory(root.Truco);
 })(typeof self !== 'undefined' ? self : this, function (Truco) {
   'use strict';
 
-  const { rankOf, envidoPoints, handWinner, valueOfTruco, envidoRaiseOptions, envidoStakes, makeDeck, shuffle, TARGET, MAX_TRUCO_LEVEL } = Truco;
+  const { rankOf, envidoPoints, handWinner, valueOfTruco, envidoRaiseOptions, envidoStakes, makeDeck, shuffle, applyUpgrades, TARGET, MAX_TRUCO_LEVEL } = Truco;
 
   const MODES = { duel: 2, trio: 3, dupla: 4 };
   const HAND_SIZE = 3;
   const SOLO_HAND_SIZE = 4;
   const ENVIDO_OPENERS = ['envido', 'real', 'falta'];
+  const ENVIDO_HINT = 27; // "Oído fino": avisa si un rival tiene más que esto
   const clone = (o) => structuredClone(o);
+
+  const modOf = (s, seat) => (s.mods && s.mods[seat]) || null;
+  const modNumber = (s, seat, field) => {
+    const m = modOf(s, seat);
+    return m && typeof m[field] === 'number' ? m[field] : 0;
+  };
+  /** Envido de un asiento, con el bonus de sus amuletos. */
+  const seatEnvido = (s, seat) => envidoPoints(s.dealt[seat]) + modNumber(s, seat, 'envidoCountBonus');
 
   function seatCount(mode) {
     const n = MODES[mode];
@@ -34,9 +47,9 @@
     return Array.from({ length: n }, (_, seat) => (seat === mano ? 0 : 1));
   }
 
-  function newGame(mode, rng = Math.random) {
+  function newGame(mode, rng = Math.random, opts = {}) {
     const n = seatCount(mode);
-    return {
+    const s = {
       mode, n,
       scores: Array(n).fill(0),
       mano: Math.floor(rng() * n),
@@ -45,6 +58,11 @@
       winners: null,
       flor: { asked: false, enabled: false, roll: null, by: null },
     };
+    if (opts.mods) {
+      s.mods = clone(opts.mods);
+      s.florRule = 'mods';
+    }
+    return s;
   }
 
   function dealHand(prev, rng = Math.random) {
@@ -60,10 +78,12 @@
       offset += size;
       return hand;
     });
+    if (s.mods) s.hands = applyUpgrades(s.hands, s.mods);
     s.dealt = clone(s.hands);
     s.discarded = null;
     s.played = Array.from({ length: s.n }, () => []);
     s.results = [];
+    if (s.mods) s.trickSeats = []; // quién ganó cada baza (para los amuletos "solo tuyos")
     s.cur = { leader: s.mano, cards: Array(s.n).fill(null) };
     s.playTurn = s.mano;
     s.turn = s.mano;
@@ -106,12 +126,13 @@
   const isFlorHand = (cards) => Boolean(cards) && cards.length === HAND_SIZE && cards.every((c) => c.suit === cards[0].suit);
   /** Puntos de una flor: 20 mas el valor de las tres cartas. */
   const florPoints = (cards) => 20 + cards.reduce((t, c) => t + florValue(c), 0);
-  const hasFlor = (s, seat) => s.flor.enabled && isFlorHand(s.dealt[seat]);
+  const florAllowed = (s, seat) => (s.florRule === 'mods' ? Boolean(modOf(s, seat) && modOf(s, seat).flor) : s.flor.enabled);
+  const hasFlor = (s, seat) => florAllowed(s, seat) && isFlorHand(s.dealt[seat]);
 
   /** Consultar al mazo: solo al empezar la mano, antes de jugar o cantar nada, y una sola vez por partida. */
   function canAskFlor(s, p) {
     return (
-      s.phase === 'play' && s.turn === p && !s.pending && !s.flor.asked &&
+      s.florRule !== 'mods' && s.phase === 'play' && s.turn === p && !s.pending && !s.flor.asked &&
       s.results.length === 0 && s.cur.cards[p] === null && s.trucoLevel === 0 && !s.envido.done
     );
   }
@@ -160,9 +181,19 @@
   const sameAction = (a, b) => a.type === b.type && a.index === b.index && a.what === b.what;
   const isLegal = (s, p, action) => legalActions(s, p).some((a) => sameAction(a, action));
 
-  /** Los puntos van a cada asiento del equipo: en dupla los dos compañeros, en trio los dos rivales del mano. */
-  function award(s, team, points) {
-    s.teams.forEach((t, seat) => { if (t === team) s.scores[seat] += points; });
+  /** Los puntos van a cada asiento del equipo: en dupla los dos compañeros, en trio los dos rivales del mano.
+   * Con amuletos, `owner` (el asiento que ganó el punto) suma su bonus `field` si es del equipo ganador.
+   * Devuelve el bonus sumado. */
+  function award(s, team, points, owner = null, field = null) {
+    const bonus = owner !== null && field && s.teams[owner] === team ? modNumber(s, owner, field) : 0;
+    s.teams.forEach((t, seat) => { if (t === team) s.scores[seat] += points + bonus; });
+    return bonus;
+  }
+
+  /** Quién cantó el truco que decide la mano (null si no hubo truco). */
+  function trucoOwner(s, reason) {
+    if (reason === 'truco-reject') return s.pending.by;
+    return s.trucoLevel > 0 ? s.lastTrucoCaller : null;
   }
 
   function finishIfWon(s, ev) {
@@ -176,10 +207,11 @@
   }
 
   function endHand(s, ev, team, points, reason, extra = {}) {
-    award(s, team, points);
+    const bonus = award(s, team, points, trucoOwner(s, reason), 'trucoBonus');
     s.pending = null;
     s.suspended = null;
     const result = { winner: team, points, reason, trucoLevel: s.trucoLevel, lastTrucoCaller: s.lastTrucoCaller, ...extra };
+    if (s.mods) Object.assign(result, { bonus, trickSeats: [...s.trickSeats] });
     s.handResult = result;
     ev.push({ type: 'hand-end', ...result, scores: [...s.scores] });
     if (!finishIfWon(s, ev)) s.phase = 'hand-over';
@@ -221,6 +253,7 @@
     }
     const trickIndex = s.results.length;
     s.results.push(winner);
+    if (s.mods) s.trickSeats.push(winnerSeat);
     ev.push({ type: 'trick', trickIndex, winner, winnerSeat, cards: [...s.cur.cards] });
     const hw = handWinner(s.results, s.teams[s.mano]);
     if (hw !== null) {
@@ -289,7 +322,7 @@
     ev.push({ type: 'envido-response', by: player, caller, response: accepted ? 'accept' : 'reject' });
     let result;
     if (accepted) {
-      const points = s.dealt.map(envidoPoints);
+      const points = s.dealt.map((_, seat) => seatEnvido(s, seat));
       const teamPoints = [0, 1].map((t) => Math.max(...points.filter((_, seat) => s.teams[seat] === t)));
       const manoTeam = s.teams[s.mano];
       const winner = teamPoints[0] === teamPoints[1] ? manoTeam : teamPoints[0] > teamPoints[1] ? 0 : 1;
@@ -297,7 +330,12 @@
     } else {
       result = { accepted: false, winner: s.teams[caller], awarded: stakes.rejected, points: null, teamPoints: null, stack: [...stack], callers: [...callers] };
     }
-    award(s, result.winner, result.awarded);
+    // El dueño del envido: el mejor envido del equipo ganador, o quien cantó si no lo quisieron.
+    const owner = accepted
+      ? result.points.reduce((best, v, seat) => (s.teams[seat] === result.winner && (best === null || v > result.points[best]) ? seat : best), null)
+      : caller;
+    const bonus = award(s, result.winner, result.awarded, owner, 'envidoBonus');
+    if (s.mods) Object.assign(result, { ownerSeat: owner, bonus });
     s.envido = { done: true, stack: [...stack], result };
     ev.push({ type: 'envido-result', ...result, scores: [...s.scores] });
     if (finishIfWon(s, ev)) {
@@ -441,7 +479,7 @@
     const result = s.envido.result;
     const hasHand = Boolean(s.hands);
     const choosing = s.phase === 'discard' && p === s.mano;
-    return {
+    const view = {
       me: p,
       n: s.n,
       mode: s.mode,
@@ -462,7 +500,7 @@
       trucoRight: s.trucoRight,
       pending: s.pending ? clone(s.pending) : null,
       envido: hasHand ? { done: s.envido.done, stack: [...s.envido.stack] } : { done: false, stack: [] },
-      myEnvido: hasHand && !choosing ? envidoPoints(s.dealt[p]) : null,
+      myEnvido: hasHand && !choosing ? seatEnvido(s, p) : null,
       envidoReveal: result && result.accepted ? { points: [...result.points], teamPoints: [...result.teamPoints] } : null,
       flor: { asked: s.flor.asked, enabled: s.flor.enabled, roll: s.flor.roll, by: s.flor.by },
       florDone: Boolean(s.florHand && s.florHand.done),
@@ -477,6 +515,18 @@
         ? s.teams.map((t, seat) => (t === s.teams[p] && seat !== p ? { seat, hand: clone(s.hands[seat]), dealt: clone(s.dealt[seat]) } : null)).filter(Boolean)
         : [],
     };
+    return hasHand && modOf(s, p) ? { ...view, ...amuletView(s, p) } : view;
+  }
+
+  /** Lo que los amuletos de información dejan ver de los rivales. El tramposo es un rival con peek 'all'. */
+  function amuletView(s, p) {
+    const m = modOf(s, p);
+    const rivals = opposingSeats(s, p);
+    const out = { mods: clone(m) };
+    if (m.peek === 'all') out.oppHands = rivals.map((seat) => ({ seat, hand: clone(s.hands[seat]) }));
+    else if (m.peek === 'one') out.oppPeeks = rivals.map((seat) => ({ seat, card: clone(s.dealt[seat][0]) }));
+    if (m.envidoHint) out.oppEnvidoHigh = rivals.map((seat) => ({ seat, high: seatEnvido(s, seat) > ENVIDO_HINT }));
+    return out;
   }
 
   return { MODES, seatCount, teamsFor, newGame, dealHand, step, forfeit, legalActions, viewFor, canCallTruco, canCallEnvido, canCallFlor, canAskFlor, hasFlor, florPoints, opposingSeats };

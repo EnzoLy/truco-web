@@ -11,6 +11,9 @@
   const RUN_VERSION = 1;
   const HUMAN = 0;
   const RIVAL = 1;
+  // Dúo: vos 0, rival A 1, compañero 2, rival B 3. Tu equipo es el 0.
+  const DUO = 'duo';
+  const MY_TEAM = 0;
   const START_COINS = 4;
   const WIN_REWARD = 4;
   const HAND_COIN = 1;
@@ -69,18 +72,24 @@
   // La flor es solo tuya: el bot no la sabe cantar.
   const RIVAL_AMULETS = AMULET_IDS.filter((id) => id !== 'flor' && ['puntaje', 'cartas'].includes(AMULETS[id].kind));
 
+  // traits: bot 1v1 (bot.js). duoTraits: bot de salas (room-bot.js), para el dúo.
   const PERSONALITIES = {
-    equilibrado: { name: 'El Profe', desc: 'Juega derecho, sin sorpresas.', traits: {} },
+    equilibrado: { name: 'El Profe', desc: 'Juega derecho, sin sorpresas.', traits: {}, duoTraits: {} },
     mentiroso: {
       name: 'El Chamuyero', desc: 'Miente seguido: canta con cualquier cosa.',
       traits: { bluffTruco: 3, bluffTrucoBase: 0.2, bluffEnvido: 2, bluffEnvidoBase: 0.15 },
+      duoTraits: { bluffCall: 0.3, acceptBluff: 0.5, envidoBluff: 0.25, envidoShift: -3 },
     },
     conservador: {
       name: 'Doña Prudencia', desc: 'Juega seguro: solo canta con buena mano.',
       traits: { trucoThreshold: 0.74, bluffTruco: 0.2, bluffEnvido: 0.2, acceptShift: 0.2, envidoAcceptShift: 2 },
+      duoTraits: { trucoShift: 1, envidoShift: 2, callChance: 0.4, bluffCall: 0.01, acceptBluff: 0.1, envidoBluff: 0.02 },
     },
-    cargado: { name: 'El Coleccionista', desc: 'Llega a la mesa con amuletos propios.', traits: {}, amulets: true },
-    tramposo: { name: 'El Tahúr', desc: 'Hace trampa: ve tus cartas.', traits: {}, cheat: true, boss: true },
+    cargado: { name: 'El Coleccionista', desc: 'Llega a la mesa con amuletos propios.', traits: {}, duoTraits: {}, amulets: true },
+    tramposo: {
+      name: 'El Tahúr', desc: 'Hace trampa: ve tus cartas.', duoDesc: 'Hace trampa: ve tus cartas y las de tu compañero.',
+      traits: {}, duoTraits: {}, cheat: true, boss: true,
+    },
   };
   const PERSONALITY_IDS = Object.keys(PERSONALITIES);
   const COMMON_RIVALS = ['equilibrado', 'mentiroso', 'conservador'];
@@ -96,6 +105,22 @@
     return out;
   }
 
+  function buildRival(id, round, rng, boss, duo = false) {
+    const p = PERSONALITIES[id];
+    const extra = Math.floor(round / BOSS_EVERY);
+    const amuletCount = p.amulets ? (boss ? 2 : 1) + extra : 0;
+    return {
+      id,
+      name: p.name,
+      desc: duo && p.duoDesc ? p.duoDesc : p.desc,
+      boss,
+      cheat: Boolean(p.cheat),
+      traits: { ...(duo ? p.duoTraits : p.traits) },
+      amulets: rivalAmulets(amuletCount, rng),
+      samples: Math.min(BASE_SAMPLES + SAMPLES_PER_ROUND * round, MAX_SAMPLES),
+    };
+  }
+
   /** Rival de la ronda: los jefes (cada 4) hacen trampa o vienen cargados. */
   function rivalFor(round, rng) {
     const boss = isBossRound(round);
@@ -103,20 +128,23 @@
     if (boss) id = rng() < 0.5 ? 'tramposo' : 'cargado';
     else if (round >= 2 && rng() < 0.25) id = 'cargado';
     else id = pick(COMMON_RIVALS, rng);
-    const p = PERSONALITIES[id];
-    const extra = Math.floor(round / BOSS_EVERY);
-    const amuletCount = p.amulets ? (boss ? 2 : 1) + extra : 0;
-    return {
-      id,
-      name: p.name,
-      desc: p.desc,
-      boss,
-      cheat: Boolean(p.cheat),
-      traits: { ...p.traits },
-      amulets: rivalAmulets(amuletCount, rng),
-      samples: Math.min(BASE_SAMPLES + SAMPLES_PER_ROUND * round, MAX_SAMPLES),
-    };
+    return buildRival(id, round, rng, boss);
   }
+
+  /** Los dos rivales del dúo, siempre con personalidades distintas. El jefe es un Tahúr con un Coleccionista. */
+  function rivalsFor(round, rng) {
+    const boss = isBossRound(round);
+    let ids;
+    if (boss) {
+      ids = rng() < 0.5 ? ['tramposo', 'cargado'] : ['cargado', 'tramposo'];
+    } else {
+      const first = round >= 2 && rng() < 0.25 ? 'cargado' : pick(COMMON_RIVALS, rng);
+      ids = [first, pick(COMMON_RIVALS.filter((id) => id !== first), rng)];
+    }
+    return ids.map((id) => buildRival(id, round, rng, boss, true));
+  }
+
+  const isDuo = (run) => run.mode === DUO;
 
   // ---------- mods y economia ----------
 
@@ -150,11 +178,13 @@
 
   const amuletMods = (ids) => ids.map((id) => AMULETS[id] && AMULETS[id].mods);
 
-  /** Mods del motor para la partida actual: [vos, rival]. */
+  const rivalMods = (rival) => combineMods([...amuletMods(rival.amulets), rival.cheat ? { peek: 'all' } : null]);
+
+  /** Mods del motor para la partida actual: [vos, rival], o en el dúo [vos, rival A, compañero, rival B]. */
   function modsFor(run) {
     const mine = combineMods([...amuletMods(run.amulets), { upgrades: run.upgrades }]);
-    const theirs = combineMods([...amuletMods(run.rival.amulets), run.rival.cheat ? { peek: 'all' } : null]);
-    return [mine, theirs];
+    if (isDuo(run)) return [mine, rivalMods(run.rivals[0]), {}, rivalMods(run.rivals[1])];
+    return [mine, rivalMods(run.rival)];
   }
 
   function econOf(run) {
@@ -171,8 +201,9 @@
 
   // ---------- run ----------
 
-  function newRun(rng, { best = 0 } = {}) {
-    return {
+  /** mode: 'solo' (contra un bot, motor 1v1) o 'duo' (con compañero, motor de salas en 'dupla'). */
+  function newRun(rng, { best = 0, mode = 'solo' } = {}) {
+    const run = {
       v: RUN_VERSION,
       phase: 'match', // match | shop | over
       round: 1,
@@ -180,14 +211,15 @@
       coins: START_COINS,
       amulets: [],
       upgrades: {},
-      rival: rivalFor(1, rng),
       shop: null,
       match: null,
       best,
     };
+    if (mode === DUO) return { ...run, mode: DUO, rivals: rivalsFor(1, rng) };
+    return { ...run, rival: rivalFor(1, rng) };
   }
 
-  /** Opciones para Truco.newGame de la partida actual. */
+  /** Opciones para Truco.newGame (solo) o TrucoRoom.newGame('dupla', ...) (dúo) de la partida actual. */
   const matchOptions = (run) => ({ mods: modsFor(run) });
 
   function withMatch(run, match) {
@@ -204,6 +236,13 @@
       run.coins += amount;
       gains.push({ amount, reason });
     };
+    if (isDuo(run)) {
+      for (const ev of events) {
+        if (ev.type === 'game-end') run = finishMatch(run, ev.winners.includes(HUMAN), gain, rng);
+        else duoGains(ev, econ, gain);
+      }
+      return { run, gains };
+    }
     for (const ev of events) {
       if (ev.type === 'hand-end' && ev.winner === HUMAN) gain(econ.handCoin, 'mano');
       else if (ev.type === 'envido-result' && ev.winner === HUMAN) gain(econ.envidoCoin, 'envido');
@@ -211,6 +250,20 @@
       else if (ev.type === 'game-end') run = finishMatch(run, ev.winner === HUMAN, gain, rng);
     }
     return { run, gains };
+  }
+
+  /** Dúo: la base la cobra tu equipo; lo extra de tus amuletos, solo si el punto fue tuyo. */
+  function duoGains(ev, econ, gain) {
+    if (ev.winner !== MY_TEAM) return;
+    if (ev.type === 'hand-end') {
+      gain(HAND_COIN, 'mano');
+      if ((ev.trickSeats || []).includes(HUMAN)) gain(econ.handCoin - HAND_COIN, 'propina');
+    } else if (ev.type === 'envido-result') {
+      gain(ENVIDO_COIN, 'envido');
+      if (ev.ownerSeat === HUMAN) gain(econ.envidoCoin - ENVIDO_COIN, 'cuentero');
+    } else if (ev.type === 'flor-result' && (ev.callers || []).includes(HUMAN)) {
+      gain(econ.envidoCoin, 'flor');
+    }
   }
 
   function finishMatch(run, won, gain, rng) {
@@ -327,12 +380,13 @@
   function leaveShop(run, rng) {
     requireShop(run);
     const round = run.round + 1;
-    return { ...run, phase: 'match', round, rival: rivalFor(round, rng), shop: null, match: null };
+    const rivals = isDuo(run) ? { rivals: rivalsFor(round, rng) } : { rival: rivalFor(round, rng) };
+    return { ...run, phase: 'match', round, ...rivals, shop: null, match: null };
   }
 
   return {
     RUN_VERSION, MAX_AMULETS, BOSS_EVERY, AMULETS, AMULET_IDS, PERSONALITIES, PERSONALITY_IDS,
-    ArcadeError, cardName, parseKey, rankText, isBossRound, rivalFor, combineMods, modsFor, econOf, interestOf, winReward,
+    DUO, ArcadeError, cardName, parseKey, rankText, isBossRound, isDuo, rivalFor, rivalsFor, combineMods, modsFor, econOf, interestOf, winReward,
     newRun, matchOptions, withMatch, onEvents, rollShop, rerollCost, cantBuy, buy, sell, sellPrice, reroll, leaveShop,
   };
 });

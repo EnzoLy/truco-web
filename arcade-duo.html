@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Truco Arcade Dúo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23e6b83c%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-size=%2722%27 text-anchor=%27middle%27 fill=%27%2316181d%27 font-family=%27Georgia,serif%27 font-weight=%27900%27%3EA%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=DM+Sans:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="css/mesa.css">
+<link rel="stylesheet" href="css/sala.css">
+<link rel="stylesheet" href="css/vida.css">
+<link rel="stylesheet" href="css/arcade.css">
+</head>
+<body>
+<div class="wall sala">
+  <main class="plate table in-game" aria-label="Mesa de truco arcade en dúo">
+    <header class="plate-head">
+      <h1>Arcade Dúo</h1>
+      <div class="tools">
+        <a class="deck-link" href="/arcade">Modos</a>
+        <a class="deck-link" href="/">Menú</a>
+      </div>
+    </header>
+
+    <section class="run-hud" aria-label="Estado de la run">
+      <div class="hud-item"><span class="hud-label">Ronda</span><span class="hud-val" id="hud-round">1</span></div>
+      <div class="hud-item hud-coins" id="hud-coins-box"><span class="hud-label">Monedas</span><span class="hud-val" id="hud-coins">0</span></div>
+      <div class="hud-item"><span class="hud-label">Récord</span><span class="hud-val" id="hud-best">0</span></div>
+    </section>
+    <div class="amulet-bar" id="amulet-bar" aria-label="Tus amuletos"></div>
+    <p class="amulet-desc" id="amulet-desc" aria-live="polite"></p>
+
+    <section class="screen-table" id="screen-table">
+      <div class="table-main">
+        <div class="rivals" id="rivals"></div>
+        <div class="center">
+          <div class="dust" id="dust" aria-hidden="true"></div>
+          <div class="tricks" id="tricks"></div>
+          <div class="baza-legend" id="baza-legend" aria-hidden="true"></div>
+          <div class="status" id="status" aria-live="polite"></div>
+          <div class="sign-feed" id="sign-feed" aria-live="polite"></div>
+        </div>
+        <div class="seat seat-you" id="seat-you">
+          <div class="bubble" id="you-bubble" role="status"></div>
+          <div class="seat-head" id="you-head">Vos <span class="chip" id="you-mano" hidden>Mano</span></div>
+          <div class="hint" id="envido-hint"></div>
+          <div class="hand" id="you-hand" aria-label="Tus cartas"></div>
+        </div>
+        <div class="dock">
+          <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="true" aria-label="Sonido activado">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="spk" d="M4 9v6h4l5 4V5L8 9H4z"/>
+              <path class="wave" d="M16.5 9.2a4 4 0 0 1 0 5.6M19 6.7a7.5 7.5 0 0 1 0 10.6"/>
+              <path class="cross" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/>
+            </svg>
+          </button>
+          <div class="actions" id="actions"></div>
+        </div>
+      </div>
+      <section class="board planilla" id="board" aria-label="Marcador"></section>
+    </section>
+  </main>
+
+  <aside class="side">
+    <details class="panel" id="rival-panel" open>
+      <summary>Rivales de esta ronda</summary>
+      <div class="panel-body">
+        <p class="rival-title" id="rival-name"></p>
+        <p class="panel-sub" id="rival-desc"></p>
+        <ul class="amulet-list" id="rival-amulets"></ul>
+      </div>
+    </details>
+
+    <details class="panel" id="mine-panel">
+      <summary>Tus amuletos y mejoras</summary>
+      <div class="panel-body">
+        <ul class="amulet-list" id="my-amulets"></ul>
+        <ul class="amulet-list" id="my-upgrades"></ul>
+      </div>
+    </details>
+
+    <details class="panel">
+      <summary>Cómo funciona el dúo</summary>
+      <ul>
+        <li>Jugás en pareja con un compañero bot contra dos rivales, cada uno con su personalidad. Partidas a 30 puntos; si tu equipo pierde una, se termina la run.</li>
+        <li>Tu compañero ve tus cartas y juega para el equipo. Vos no ves las suyas.</li>
+        <li>Las monedas por mano y por envido las gana el equipo. Lo extra de tus amuletos cuenta solo cuando el punto fue tuyo: el truco lo cantaste vos, el envido se ganó con tus puntos, o ganaste alguna baza de la mano.</li>
+        <li>Las mejoras de cartas valen solo para tus cartas y duran la partida siguiente. Espejito y Bola de cristal te muestran cartas de los dos rivales.</li>
+        <li>No hay flor, salvo que tengas el amuleto Flor.</li>
+        <li>Cada 4 rondas toca un jefe: un tahúr que ve tus cartas y las de tu compañero, junto con un rival cargado de amuletos.</li>
+      </ul>
+    </details>
+
+    <details class="panel">
+      <summary>Historial de la partida</summary>
+      <ul class="log" id="log"></ul>
+    </details>
+  </aside>
+</div>
+
+<div class="shout" id="shout" aria-hidden="true"><div class="shout-text" id="shout-text"></div></div>
+
+<div class="handend" id="handend" aria-hidden="true">
+  <div class="handend-card">
+    <span class="handend-title" id="handend-title"></span>
+    <strong class="handend-points" id="handend-points"></strong>
+    <span class="handend-why" id="handend-why"></span>
+  </div>
+</div>
+
+<div class="overlay" id="intro" hidden>
+  <div class="dialog intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+    <p class="intro-round" id="intro-round"></p>
+    <h2 id="intro-title"></h2>
+    <p id="intro-desc"></p>
+    <ul class="amulet-list" id="intro-amulets"></ul>
+    <button class="btn primary" id="intro-go" type="button">¡A jugar!</button>
+  </div>
+</div>
+
+<div class="overlay" id="shop" hidden>
+  <div class="dialog shop" role="dialog" aria-modal="true" aria-labelledby="shop-title">
+    <h2 id="shop-title">Tienda</h2>
+    <p class="shop-coins">Tenés <b id="shop-coins">0</b> monedas</p>
+    <div class="shop-items" id="shop-items"></div>
+    <h3 class="shop-sub" id="shop-owned-title">Tus amuletos</h3>
+    <div class="shop-owned" id="shop-owned"></div>
+    <p class="shop-msg" id="shop-msg" aria-live="polite"></p>
+    <div class="shop-actions">
+      <button class="btn ghost" id="shop-reroll" type="button">Cambiar ofertas</button>
+      <button class="btn primary" id="shop-next" type="button">Siguiente ronda</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="over" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="over-title">
+    <h2 id="over-title">Fin de la run</h2>
+    <p id="over-text"></p>
+    <button class="btn primary" id="over-again" type="button">Nueva run</button>
+    <a class="btn ghost" href="/arcade">Cambiar de modo</a>
+    <a class="btn ghost" href="/">Volver al menú</a>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/emblems.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/room-engine.js"></script>
+<script src="js/room-bot.js"></script>
+<script src="js/local-room.js"></script>
+<script src="js/sala-text.js"></script>
+<script src="js/card-badges.js"></script>
+<script src="js/sala-table.js"></script>
+<script src="js/arcade.js"></script>
+<script src="js/arcade-store.js"></script>
+<script src="js/arcade-shell.js"></script>
+<script src="js/arcade-duo-ui.js"></script>
+</body>
+</html>

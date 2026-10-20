@@ -11,6 +11,7 @@
 const crypto = require('node:crypto');
 const A = require('../js/arcade.js');
 const { DEFAULT_TRAITS } = require('../js/bot.js');
+const { DEFAULT_TRAITS: ROOM_TRAITS } = require('../js/room-bot.js');
 
 const TOKEN_BYTES = 24;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,8 +34,11 @@ const MAX_SCORE = 200;
 const MAX_RUN_BYTES = 12_288;
 const MAX_VERSION = 2 ** 31 - 2; // la columna es integer y se guarda version + 1
 const PHASES = new Set(['match', 'shop', 'over']);
-const MATCH_PHASES = new Set(['idle', 'play', 'respond-truco', 'respond-envido', 'hand-over', 'game-over']);
-const RUN_KEYS = new Set(['v', 'phase', 'round', 'wins', 'coins', 'amulets', 'upgrades', 'rival', 'shop', 'match', 'best']);
+const MATCH_PHASES = new Set(['idle', 'play', 'respond-truco', 'respond-envido', 'respond-flor', 'hand-over', 'game-over']);
+const RUN_KEYS = new Set(['v', 'mode', 'phase', 'round', 'wins', 'coins', 'amulets', 'upgrades', 'rival', 'rivals', 'shop', 'match', 'best']);
+const SOLO_SEATS = 2;
+const DUO_SEATS = 4; // el dúo juega con el motor de salas: un puntaje por asiento
+const DUO_RIVALS = 2;
 const RIVAL_KEYS = new Set(['id', 'name', 'desc', 'boss', 'cheat', 'traits', 'amulets', 'samples']);
 const AMULET_ITEM_KEYS = new Set(['type', 'id', 'price', 'sold']);
 const UPGRADE_ITEM_KEYS = new Set(['type', 'key', 'field', 'value', 'price', 'name', 'desc', 'sold']);
@@ -42,6 +46,7 @@ const UPGRADE_FIELDS = { rank: MAX_RANK, envido: MAX_ENVIDO_CARD };
 const AMULET_IDS = new Set(A.AMULET_IDS);
 const PERSONALITY_IDS = new Set(A.PERSONALITY_IDS);
 const TRAIT_KEYS = new Set(Object.keys(DEFAULT_TRAITS));
+const ROOM_TRAIT_KEYS = new Set(Object.keys(ROOM_TRAITS));
 
 class ArcadeHttpError extends Error {
   constructor(status, message) {
@@ -78,7 +83,7 @@ function checkUpgrades(upgrades) {
   }
 }
 
-function checkRival(rival) {
+function checkRival(rival, traitKeys = TRAIT_KEYS) {
   if (!isObject(rival)) invalid('rival');
   onlyKeys(rival, RIVAL_KEYS, 'rival');
   if (!PERSONALITY_IDS.has(rival.id)) invalid('rival.id');
@@ -87,7 +92,7 @@ function checkRival(rival) {
   if (!isInt(rival.samples, 1, MAX_SAMPLES)) invalid('rival.samples');
   checkAmulets(rival.amulets, MAX_RIVAL_AMULETS, 'rival.amulets');
   if (!isObject(rival.traits)) invalid('rival.traits');
-  for (const [k, v] of Object.entries(rival.traits)) if (!TRAIT_KEYS.has(k) || !isNum(v, -10, 10)) invalid('rival.traits');
+  for (const [k, v] of Object.entries(rival.traits)) if (!traitKeys.has(k) || !isNum(v, -10, 10)) invalid('rival.traits');
 }
 
 function checkShopItem(item) {
@@ -113,10 +118,25 @@ function checkShop(shop) {
 }
 
 /** La partida en curso la arma el motor; aca solo se mira que tenga forma de partida. */
-function checkMatch(match) {
+function checkMatch(match, seats) {
   if (match === null) return;
   if (!isObject(match) || !MATCH_PHASES.has(match.phase)) invalid('match');
-  if (!Array.isArray(match.scores) || match.scores.length !== 2 || !match.scores.every((s) => isInt(s, 0, MAX_SCORE))) invalid('match.scores');
+  if (!Array.isArray(match.scores) || match.scores.length !== seats || !match.scores.every((s) => isInt(s, 0, MAX_SCORE))) invalid('match.scores');
+}
+
+/** Solo: un rival (bot 1v1). Dúo: dos rivales (bot de salas) y la partida de 4 asientos. */
+function checkOpponents(run) {
+  if (run.mode === undefined) {
+    if (run.rivals !== undefined) invalid('rivals');
+    checkRival(run.rival);
+    checkMatch(run.match, SOLO_SEATS);
+    return;
+  }
+  if (run.mode !== A.DUO) invalid('mode');
+  if (run.rival !== undefined) invalid('rival');
+  if (!Array.isArray(run.rivals) || run.rivals.length !== DUO_RIVALS) invalid('rivals');
+  run.rivals.forEach((r) => checkRival(r, ROOM_TRAIT_KEYS));
+  checkMatch(run.match, DUO_SEATS);
 }
 
 function validateRun(run) {
@@ -130,9 +150,8 @@ function validateRun(run) {
   if (!isInt(run.coins, 0, MAX_COINS) || !isInt(run.best, 0, MAX_ROUND)) invalid('coins');
   checkAmulets(run.amulets, A.MAX_AMULETS, 'amulets');
   checkUpgrades(run.upgrades);
-  checkRival(run.rival);
+  checkOpponents(run);
   checkShop(run.shop);
-  checkMatch(run.match);
   return run;
 }
 

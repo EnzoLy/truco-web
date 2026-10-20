@@ -76,6 +76,22 @@
 .up-tip[hidden] { display: none; }
 .rival-hand .card.peeked img { box-shadow: 0 0 0 2px var(--kind-info), var(--card-shadow); }
 
+/* ---------- selector de modo (solo / dúo) ---------- */
+.mode-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; text-align: left; }
+.mode-choice {
+  display: grid; gap: 4px; padding: 14px 16px; border-radius: 12px; cursor: pointer;
+  background: var(--porcelain); color: var(--ink); border: 2px solid var(--wall); box-shadow: 4px 4px 0 var(--signal);
+  font: inherit; text-align: left; transition: transform 120ms var(--ease-out);
+}
+.mode-choice:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--signal); }
+.mode-choice:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.mode-choice-name { font-family: var(--display); font-size: 24px; line-height: 1; }
+.mode-choice-desc { font-size: 15px; color: #3a3d47; }
+.mode-choice-status { font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--lacre); }
+
+/* pista de "Oído fino" sobre cada rival del dúo */
+.rival-head .hint-tag { background: var(--kind-info); color: var(--porcelain); }
+
 /* ---------- carteles: intro, tienda, fin ---------- */
 .dialog .intro-round { font-size: 13px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--porcelain-dim); }
 #intro.boss .dialog { box-shadow: 6px 8px 0 var(--signal), 6px 8px 0 3px var(--wall); }

@@ -10,7 +10,7 @@ sin dependencias.
 |------|------|
 | `/` | Menú de inicio. Los ajustes están en `/#ajustes`. |
 | `/bot` | 1 contra 1 contra el bot. El bot va aprendiendo cómo jugás y lo recuerda en tu navegador. |
-| `/arcade` | Run infinita contra bots con personalidad. Ganás monedas y comprás amuletos en una tienda. Una derrota termina la run. |
+| `/arcade` | Run infinita contra bots con personalidad. Ganás monedas y comprás amuletos en una tienda. Una derrota termina la run. Se juega solo (1 vs 1) o en dúo (`/arcade-duo`: vos y un compañero bot contra dos rivales). |
 | `/sala` | Salas con amigos: duelo (1 vs 1), trío (3) o dupla (2 vs 2). Los lugares libres los ocupan bots. Se entra con `/sala?sala=CODIGO`, y una partida ya empezada se puede mirar en vivo. |
 | `/cartas` | Estilo de los naipes. |
 
@@ -35,6 +35,13 @@ canto y telón de fin de mano.
 - **Flor:** no hay, salvo que tengas el amuleto Flor.
 - **Guardado:** la run se guarda en el navegador y en Supabase con una identidad anónima por dispositivo
   (sin login). Al recargar seguís en la misma jugada.
+- **Dúo:** el modo se elige al empezar la run, y cada modo tiene su propia run y su propio récord.
+  - Jugás con un compañero bot que ve tus cartas, contra dos rivales con personalidades distintas.
+  - Las monedas por mano y por envido las gana el equipo.
+  - Tus amuletos son solo tuyos: lo extra cuenta cuando el punto fue tuyo (cantaste el truco, el envido se
+    ganó con tus puntos o ganaste una baza de la mano). Espejito, Bola de cristal y Oído fino miran a los dos
+    rivales.
+  - El jefe es un Tahúr, que ve tus cartas y las de tu compañero, junto con un Coleccionista.
 
 ## Correr en local
 
@@ -49,18 +56,24 @@ producción, copiá `.env.example` a `.env`, completalo y corré `node --env-fil
 ## Estructura
 
 ```
-index.html bot.html arcade.html sala.html cartas.html
+index.html bot.html arcade.html arcade-duo.html sala.html cartas.html
 js/
   engine.js        Reglas 1 vs 1 como funciones puras: step(state, player, action) -> { state, events }.
                    Acepta "mods" por jugador (amuletos del arcade).
   bot.js           Bot Monte Carlo que aprende del rival. Sus rasgos (traits) arman las personalidades.
-  ui.js            Mesa del modo bot y del arcade (TrucoTable.mount).
+  ui.js            Mesa del modo bot y del arcade solo (TrucoTable.mount).
   table-fx.js      Efectos de la mesa: cantos, chispas, polvo, telón de fin de mano.
-  arcade.js        Lógica pura de la run: rivales, economía, tienda, amuletos.
-  arcade-store.js  Guardado de la run: primero local, después el servidor en segundo plano.
-  arcade-ui.js     HUD, tienda y pantallas del arcade.
-  room-engine.js   Reglas para 2, 3 y 4 jugadores, con flor. Lo usan las salas.
-  sala.js          Cliente de las salas.
+  card-badges.js   Íconos de mejora en las cartas, con su tooltip.
+  arcade.js        Lógica pura de la run (solo y dúo): rivales, economía, tienda, amuletos.
+  arcade-store.js  Guardado de la run: primero local, después el servidor en segundo plano. Un lugar por modo.
+  arcade-shell.js  HUD, tienda, selector de modo y pantallas del arcade, comunes a los dos modos.
+  arcade-ui.js     Arcade solo: monta la mesa de ui.js.
+  arcade-duo-ui.js Arcade dúo: monta la mesa de las salas sobre una sala local.
+  room-engine.js   Reglas para 2, 3 y 4 jugadores, con flor. Acepta "mods" por asiento (amuletos del dúo).
+  room-bot.js      Bot de las salas; juega para su equipo. Acepta rasgos (traits) para las personalidades.
+  local-room.js    Sala que corre en el navegador (motor + bots), con los mismos tiempos que el servidor.
+  sala-table.js    Mesa de las salas (rivales, bazas, acciones, señas). La usan las salas y el arcade dúo.
+  sala.js          Cliente de las salas: lobby y red.
 css/               mesa.css (base), sala.css y vida.css (mesa y animaciones), arcade.css
 sounds/            Sonidos de cartas y fichas: packs de Kenney (kenney.nl), licencia CC0. js/sound.js
                    los carga al primer toque; si fallan, usa sonidos sintetizados.

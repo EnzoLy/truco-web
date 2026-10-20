@@ -10,6 +10,11 @@
 
   const RUN_KEY = 'truco.arcade.run.v1';
   const ID_KEY = 'truco.arcade.id';
+  // Cada modo guarda su run aparte, con su propia identidad: para el servidor el dúo es otro jugador anónimo.
+  const SLOTS = {
+    solo: { run: RUN_KEY, id: ID_KEY },
+    duo: { run: 'truco.arcade.duo.v1', id: 'truco.arcade.id.duo' },
+  };
   const SAVE_DEBOUNCE_MS = 400;
   const CONFLICT = 409;
 
@@ -32,14 +37,16 @@
   }
 
   /**
-   * deps: storage (localStorage), fetchImpl, runVersion, setTimer/clearTimer (para tests), log.
+   * deps: storage (localStorage), fetchImpl, runVersion, slot ('solo' | 'duo'), setTimer/clearTimer (para tests), log.
    * load() -> run | null (primero la copia local, si no la del servidor). save(run) guarda ya en local y
    * en el servidor despues de un instante, de a un pedido por vez. flush() manda lo pendiente.
    */
   function createRunStore({
-    storage, fetchImpl, runVersion, setTimer = setTimeout, clearTimer = clearTimeout, log = console,
+    storage, fetchImpl, runVersion, slot = 'solo', setTimer = setTimeout, clearTimer = clearTimeout, log = console,
   }) {
-    let identity = safeGet(storage, ID_KEY);
+    if (!SLOTS[slot]) throw new Error(`Modo de arcade desconocido: ${slot}`);
+    const { run: RUN_SLOT, id: ID_SLOT } = SLOTS[slot];
+    let identity = safeGet(storage, ID_SLOT);
     let version = null;
     let pending = null;
     let timer = null;
@@ -69,7 +76,7 @@
       if (!creating) {
         creating = call('POST', 'player', {}).then((made) => {
           identity = made;
-          safeSet(storage, ID_KEY, identity);
+          safeSet(storage, ID_SLOT, identity);
           return identity;
         }).finally(() => { creating = null; });
       }
@@ -115,7 +122,7 @@
 
     return {
       async load() {
-        const local = safeGet(storage, RUN_KEY);
+        const local = safeGet(storage, RUN_SLOT);
         if (local && local.v === runVersion) {
           // En la misma cola que los guardados, asi su version nunca pisa una mas nueva.
           if (online) chain = chain.then(fetchRemote).catch((err) => log.warn('Sin conexión con el servidor del arcade', err));
@@ -125,7 +132,7 @@
         try {
           const { run } = await fetchRemote();
           if (run && run.v === runVersion) {
-            safeSet(storage, RUN_KEY, run);
+            safeSet(storage, RUN_SLOT, run);
             return run;
           }
         } catch (err) {
@@ -135,7 +142,7 @@
       },
 
       save(run) {
-        safeSet(storage, RUN_KEY, run);
+        safeSet(storage, RUN_SLOT, run);
         pending = run;
         clearTimer(timer);
         timer = setTimer(flush, SAVE_DEBOUNCE_MS);
@@ -145,5 +152,5 @@
     };
   }
 
-  return { createRunStore, RUN_KEY, ID_KEY };
+  return { createRunStore, RUN_KEY, ID_KEY, SLOTS };
 });

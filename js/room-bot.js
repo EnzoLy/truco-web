@@ -1,6 +1,9 @@
 /* Bot para llenar asientos de las salas. Decide con la vista de su asiento (viewFor de room-engine).
  * Cuando el servidor se lo permite (view.partners), ve las cartas de sus companeros y juega como equipo:
- * acepta o canta truco y envido segun lo que tiene todo el equipo, y deja ganar al companero. */
+ * acepta o canta truco y envido segun lo que tiene todo el equipo, y deja ganar al companero.
+ *
+ * Personalidad (arcade dúo): decide(view, rng, traits) con ajustes sobre DEFAULT_TRAITS (todos chicos, de -10 a 10).
+ * Tramposo: si la vista trae view.oppHands (las manos rivales), juega sabiendo qué tienen. */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'));
   else root.TrucoRoomBot = factory(root.Truco);
@@ -15,11 +18,19 @@
   const TRUCO_CALL_POWER = 4;
   const TRUCO_RAISE_POWER = 6.5;
   const ACCEPT_POWER = [0, 2.5, 3.5, 4.5]; // segun el nivel que cantan: truco, retruco, vale cuatro
-  const ACCEPT_BLUFF = 0.3;
   const POOLED_EXTRA = 0.8; // con las cartas de un companero a la vista el equipo siempre junta mas: se exige un poco mas
-  const CALL_CHANCE = 0.55;
-  const RAISE_CHANCE = 0.5;
-  const BLUFF_CALL = 0.06;
+  const AVERAGE_RIVAL_POWER = 4.1; // poder promedio de las mejores 3 cartas entre 6 al azar (para el tramposo)
+  /** Ajustes de personalidad. trucoShift/envidoShift suben (o bajan) lo que pide para cantar y aceptar. */
+  const DEFAULT_TRAITS = Object.freeze({
+    trucoShift: 0,
+    envidoShift: 0,
+    callChance: 0.55,
+    raiseChance: 0.5,
+    bluffCall: 0.06,
+    acceptBluff: 0.3,
+    envidoCallChance: 0.7,
+    envidoBluff: 0.08,
+  });
   const ASK_FLOR_CHANCE = 0.12;
   const FLOR_ACCEPT = { flor: 28, contraflor: 32, resto: 35 }; // puntos de flor que pide segun lo que le cantan
   const FLOR_CONTRA = 35;
@@ -42,10 +53,15 @@
 
   const partnerHands = (view) => (view.partners || []).map((p) => p.hand);
 
-  /** Poder del equipo: las mejores cartas que le quedan entre todos los companeros. */
+  const topPower = (cards) => cards.map(cardPower).sort((a, b) => b - a).slice(0, TOP_CARDS).reduce((t, v) => t + v, 0);
+  const rivalHands = (view) => (view.oppHands || []).map((o) => o.hand);
+
+  /** Poder del equipo: las mejores cartas que le quedan entre todos los companeros.
+   * El tramposo lo mide contra lo que tienen de verdad los rivales en vez de contra un rival promedio. */
   function teamPower(view) {
-    const cards = [...view.hand, ...partnerHands(view).flat()];
-    return cards.map(cardPower).sort((a, b) => b - a).slice(0, TOP_CARDS).reduce((t, v) => t + v, 0);
+    const own = topPower([...view.hand, ...partnerHands(view).flat()]);
+    if (!view.oppHands) return own;
+    return own - topPower(rivalHands(view).flat()) + AVERAGE_RIVAL_POWER;
   }
 
   /** Mejor envido que puede mostrar el equipo (el propio y el de los companeros). */
@@ -53,6 +69,15 @@
     const own = view.myEnvido ?? 0;
     const partners = (view.partners || []).map((p) => envidoPoints(p.dealt));
     return Math.max(own, ...partners);
+  }
+
+  /** El tramposo sabe si gana el envido: si gana lo canta fuerte, si pierde lo trata como si no tuviera nada. */
+  function envidoEdge(view) {
+    const ours = teamEnvido(view);
+    const full = rivalHands(view).filter((h) => h.length === TOP_CARDS);
+    if (!full.length) return ours;
+    const theirs = Math.max(...full.map(envidoPoints));
+    return ours >= theirs ? Math.max(ours, ENVIDO_REAL) : 0;
   }
 
   const florCards = (cards) => cards.length === 3 && cards.every((c) => c.suit === cards[0].suit);
@@ -103,46 +128,48 @@
     return { type: 'play', index: (beater || lowest).index };
   }
 
-  function respondTruco(view, rng) {
+  function respondTruco(view, rng, t) {
     if (has(view, 'flor', 'flor') && rng() < FLOR_OVERRIDE) return { type: 'flor', what: 'flor' };
     const power = teamPower(view);
     const level = view.pending.level;
-    if (power >= TRUCO_RAISE_POWER && level < 3 && has(view, 'truco') && rng() < RAISE_CHANCE) return { type: 'truco' };
-    const needed = ACCEPT_POWER[level] + ((view.partners || []).length ? POOLED_EXTRA : 0);
-    if (power >= needed || rng() < ACCEPT_BLUFF) return { type: 'accept' };
+    if (power >= TRUCO_RAISE_POWER + t.trucoShift && level < 3 && has(view, 'truco') && rng() < t.raiseChance) return { type: 'truco' };
+    const needed = ACCEPT_POWER[level] + t.trucoShift + ((view.partners || []).length ? POOLED_EXTRA : 0);
+    if (power >= needed || rng() < t.acceptBluff) return { type: 'accept' };
     return { type: 'reject' };
   }
 
-  function respondEnvido(view, rng) {
+  function respondEnvido(view, rng, t) {
     if (has(view, 'flor', 'flor') && rng() < FLOR_OVERRIDE) return { type: 'flor', what: 'flor' };
-    const points = teamEnvido(view);
-    if (points >= ENVIDO_REAL && has(view, 'envido', 'real') && rng() < 0.5) return { type: 'envido', what: 'real' };
-    if (points >= ENVIDO_ACCEPT || rng() < 0.08) return { type: 'accept' };
+    const points = envidoEdge(view);
+    if (points >= ENVIDO_REAL + t.envidoShift && has(view, 'envido', 'real') && rng() < 0.5) return { type: 'envido', what: 'real' };
+    if (points >= ENVIDO_ACCEPT + t.envidoShift || rng() < t.envidoBluff) return { type: 'accept' };
     return { type: 'reject' };
   }
 
-  function play(view, rng) {
+  function play(view, rng, t) {
     if (has(view, 'flor', 'flor')) return { type: 'flor', what: 'flor' };
     if (has(view, 'ask-flor') && rng() < ASK_FLOR_CHANCE) return { type: 'ask-flor' };
-    const points = teamEnvido(view);
-    if (has(view, 'envido', 'envido') && points >= ENVIDO_CALL && rng() < 0.7) {
-      return { type: 'envido', what: points >= ENVIDO_REAL && rng() < 0.4 ? 'real' : 'envido' };
+    const points = envidoEdge(view);
+    if (has(view, 'envido', 'envido') && points >= ENVIDO_CALL + t.envidoShift && rng() < t.envidoCallChance) {
+      return { type: 'envido', what: points >= ENVIDO_REAL + t.envidoShift && rng() < 0.4 ? 'real' : 'envido' };
     }
-    if (has(view, 'truco') && ((teamPower(view) >= TRUCO_CALL_POWER && rng() < CALL_CHANCE) || rng() < BLUFF_CALL)) return { type: 'truco' };
+    const strong = teamPower(view) >= TRUCO_CALL_POWER + t.trucoShift;
+    if (has(view, 'truco') && ((strong && rng() < t.callChance) || rng() < t.bluffCall)) return { type: 'truco' };
     return choosePlay(view);
   }
 
-  /** Devuelve una accion legal para view.me. rng permite pruebas deterministas. */
-  function decide(view, rng = Math.random) {
+  /** Devuelve una accion legal para view.me. rng permite pruebas deterministas; traits ajusta la personalidad. */
+  function decide(view, rng = Math.random, traits = {}) {
+    const t = { ...DEFAULT_TRAITS, ...traits };
     let action;
     if (view.phase === 'discard') action = chooseDiscard(view);
-    else if (view.phase === 'play') action = play(view, rng);
-    else if (view.phase === 'respond-truco') action = respondTruco(view, rng);
-    else if (view.phase === 'respond-envido') action = respondEnvido(view, rng);
+    else if (view.phase === 'play') action = play(view, rng, t);
+    else if (view.phase === 'respond-truco') action = respondTruco(view, rng, t);
+    else if (view.phase === 'respond-envido') action = respondEnvido(view, rng, t);
     else if (view.phase === 'respond-flor') action = respondFlor(view, rng);
     const legal = action && view.legal.some((a) => a.type === action.type && a.index === action.index && a.what === action.what);
     return legal ? action : view.legal[0];
   }
 
-  return { decide, teamPower, teamEnvido };
+  return { DEFAULT_TRAITS, decide, teamPower, teamEnvido };
 });

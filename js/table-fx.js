@@ -18,8 +18,6 @@
   const PEEK_WIDTH = 176;
   const PEEK_GAP = 10;
   const PEEK_MARGIN = 8;
-  const TIP_GAP = 8;
-  const TIP_MARGIN = 8;
 
   function create() {
     const $ = (id) => document.getElementById(id);
@@ -217,53 +215,7 @@
       node.addEventListener('click', (e) => { e.stopPropagation(); peekPinned = true; showPeek(node, info); });
     }
 
-    // Tooltip de los iconos de mejora: hover con mouse, o tocar el icono en el celular (queda hasta tocar otra cosa).
-    let tipNode = null;
-    let tipAnchor = null;
-
-    function showTip(anchor, text) {
-      if (!tipNode) {
-        tipNode = el('div', 'up-tip');
-        tipNode.setAttribute('role', 'tooltip');
-        document.body.append(tipNode);
-      }
-      tipNode.textContent = text;
-      tipNode.hidden = false;
-      tipAnchor = anchor;
-      const rect = anchor.getBoundingClientRect();
-      const box = tipNode.getBoundingClientRect();
-      const left = Math.min(Math.max(rect.left + rect.width / 2 - box.width / 2, TIP_MARGIN), innerWidth - box.width - TIP_MARGIN);
-      const above = rect.top - box.height - TIP_GAP;
-      tipNode.style.left = `${left}px`;
-      tipNode.style.top = `${above >= TIP_MARGIN ? above : rect.bottom + TIP_GAP}px`;
-    }
-
-    function hideTip() {
-      tipAnchor = null;
-      if (tipNode) tipNode.hidden = true;
-    }
-    document.addEventListener('click', hideTip);
-    document.addEventListener('scroll', hideTip, true);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
-
-    /** Le pone tooltip a un icono. Tocarlo no selecciona ni tira la carta que lo contiene. */
-    function tooltip(node, text) {
-      node.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') showTip(node, text); });
-      node.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') hideTip(); });
-      node.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        if (tipAnchor === node) hideTip();
-        else showTip(node, text);
-      });
-    }
-
-    /** Si la carta del icono se redibujó (jugada del rival, cambio de turno), el tooltip no queda flotando. */
-    function dropStaleTip() {
-      if (tipAnchor && !tipAnchor.isConnected) hideTip();
-    }
-
-    return { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip, peekable, tooltip, dropStaleTip };
+    return { shout, sparks, seedDust, handEnd, knock, afterCurtain, skip, peekable };
   }
 
   window.TrucoTableFx = { create };

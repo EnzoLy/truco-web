@@ -53,6 +53,39 @@ test('validateRun rechaza runs con datos inventados', () => {
   for (const run of bad) assert.throws(() => validateRun(run), ArcadeHttpError, JSON.stringify(run)?.slice(0, 80));
 });
 
+// ---------- dúo ----------
+
+const Room = require('../js/room-engine.js');
+const duoRun = () => A.newRun(seeded(5), { mode: 'duo' });
+const duoMidMatch = () => {
+  const run = { ...duoRun(), amulets: ['flor', 'figuras'] };
+  const state = Room.dealHand(Room.newGame('dupla', seeded(6), A.matchOptions(run)), seeded(7)).state;
+  return A.withMatch(run, state);
+};
+
+test('validateRun acepta runs de dúo reales: nueva, a mitad de partida y en la tienda', () => {
+  const shop = A.onEvents(duoRun(), [{ type: 'game-end', winners: [0, 2] }], seeded(8)).run;
+  for (const run of [duoRun(), duoMidMatch(), shop]) {
+    assert.doesNotThrow(() => validateRun(JSON.parse(JSON.stringify(run))));
+  }
+});
+
+test('validateRun rechaza runs de dúo mal armadas', () => {
+  const r = duoRun();
+  const bad = [
+    { ...r, mode: 'trio' },
+    { ...r, rivals: [r.rivals[0]] },
+    { ...r, rivals: [...r.rivals, r.rivals[0]] },
+    { ...r, rival: r.rivals[0] },
+    { ...r, rivals: [{ ...r.rivals[0], traits: { bluffTruco: 1 } }, r.rivals[1]] }, // traits del bot 1v1
+    { ...r, rivals: [{ ...r.rivals[0], traits: { bluffCall: 50 } }, r.rivals[1]] },
+    { ...duoMidMatch(), match: { ...duoMidMatch().match, scores: [0, 0] } },
+    { ...freshRun(), rivals: r.rivals }, // solo con rivales de dúo
+    { ...midMatch(), match: { ...midMatch().match, scores: [0, 0, 0, 0] } },
+  ];
+  for (const run of bad) assert.throws(() => validateRun(run), ArcadeHttpError, JSON.stringify(run)?.slice(0, 80));
+});
+
 // ---------- manager ----------
 
 test('crear jugador devuelve id y token; el token no se guarda en claro', async () => {
