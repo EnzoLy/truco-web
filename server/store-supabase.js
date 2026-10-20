@@ -6,8 +6,14 @@
 const TABLE = 'rooms';
 const UNIQUE_VIOLATION = 409;
 
-function createSupabaseStore({ url, key, fetchImpl = fetch, table = TABLE }) {
+/** Las variables de entorno suelen llegar con espacios, saltos de linea o comillas pegadas. */
+const cleanEnv = (value) => String(value ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
+
+function createSupabaseStore({ url: rawUrl, key: rawKey, fetchImpl = fetch, table = TABLE }) {
+  const url = cleanEnv(rawUrl);
+  const key = cleanEnv(rawKey);
   if (!url || !key) throw new Error('Faltan SUPABASE_URL y SUPABASE_SECRET_KEY');
+  if (key.startsWith('sb_publishable_')) throw new Error('SUPABASE_SECRET_KEY tiene la clave publishable; hace falta la secret (sb_secret_...)');
   const base = `${url.replace(/\/+$/, '')}/rest/v1/${table}`;
   // Las claves nuevas (sb_secret_...) van solo en apikey; las JWT viejas tambien como Bearer.
   const auth = key.includes('.') ? { Authorization: `Bearer ${key}` } : {};
