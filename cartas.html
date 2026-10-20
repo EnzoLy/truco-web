@@ -92,7 +92,7 @@
       <h1>Elegí tus cartas</h1>
       <p>Baraja española ilustrada a mano en SVG con pintas tradicionales, relieves y figuras de cada palo.</p>
     </div>
-    <a class="back-link" href="/">← Volver a la mesa</a>
+    <a class="back-link" id="back" href="/bot">← Volver a la mesa</a>
   </header>
 
   <section>
@@ -126,6 +126,13 @@
     { num: 11, suit: 'espada' },
     { num: 12, suit: 'oro' },
   ];
+  // Desde Ajustes (?de=ajustes) se vuelve a Ajustes; desde la mesa, a la mesa.
+  const fromSettings = new URLSearchParams(location.search).get('de') === 'ajustes';
+  if (fromSettings) {
+    const back = document.getElementById('back');
+    back.href = '/#ajustes';
+    back.textContent = '← Volver a ajustes';
+  }
   const KEY_ART = 'truco-dibujo';
   const KEY_FRAME = 'truco-cartas';
   const read = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
@@ -175,7 +182,7 @@
       btn.addEventListener('click', () => {
         currentArt = name;
         write(KEY_ART, name); write(KEY_FRAME, frame);
-        location.href = '/?dibujo=' + name + '&cartas=' + frame;
+        location.href = fromSettings ? '/#ajustes' : '/bot?dibujo=' + name + '&cartas=' + frame;
       });
       box.append(h, d, row, btn);
       list.append(box);

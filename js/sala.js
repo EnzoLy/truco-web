@@ -227,9 +227,12 @@
 
   // ---------- pantallas de entrada ----------
 
+  /** El menú de inicio manda ?modo=duel|trio|dupla: llega con ese modo ya elegido. */
   function openHome() {
     show('home');
     $('name-home').value = name();
+    const wanted = new URLSearchParams(location.search).get('modo');
+    document.querySelectorAll('input[name="mode"]').forEach((radio) => { if (radio.value === wanted) radio.checked = true; });
   }
 
   async function openJoin(code, message) {

@@ -1,0 +1,35 @@
+/* Menú de inicio y ajustes. Se apoya en mesa.css (placa, botones) y sala.css (pantallas, modos, campos). */
+
+.menu-group { display: grid; gap: 10px; }
+.menu-label { margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--porcelain-dim); }
+
+a.mode, a.setting { color: inherit; text-decoration: none; }
+a.mode:focus-visible, a.setting:focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
+@media (hover: hover) {
+  a.mode:hover { background: var(--porcelain); color: var(--ink); border-color: var(--signal); box-shadow: 3px 3px 0 var(--signal-deep); }
+  a.mode:hover .mode-desc { color: #3a3d47; }
+}
+
+.settings { display: grid; gap: 12px; }
+.setting {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 12px; cursor: pointer;
+  background: var(--enamel-hi); border: 2px solid var(--wall); box-shadow: 3px 3px 0 var(--wall);
+}
+div.setting { cursor: default; }
+.setting-text { display: grid; gap: 2px; min-width: 0; }
+.setting-name { font-family: var(--display); font-size: 18px; letter-spacing: 0.02em; }
+.setting-desc { font-size: 14px; color: var(--porcelain-dim); }
+.setting-go { flex: none; font-family: var(--display); font-size: 28px; line-height: 1; color: var(--signal); }
+
+.switch {
+  appearance: none; flex: none; position: relative; width: 54px; height: 30px; margin: 0; border-radius: 15px; cursor: pointer;
+  background: var(--wall); border: 2px solid var(--porcelain-dim); transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--porcelain);
+  transition: transform 160ms var(--ease-out);
+}
+.switch:checked { background: var(--ok); border-color: var(--porcelain); }
+.switch:checked::after { transform: translateX(24px); }
+.switch:focus-visible { outline: 3px solid var(--signal); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .switch, .switch::after { transition: none; } }

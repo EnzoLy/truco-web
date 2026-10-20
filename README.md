@@ -3,7 +3,8 @@
 Truco argentino en el navegador: 1 contra 1 contra un bot que aprende de tu estilo, o con amigos en salas
 (duelo, dupla o trío). Sin build ni framework: JS plano y un servidor Node sin dependencias.
 
-- `/` — mesa contra el bot · `/sala` — salas con amigos (`/sala?sala=CODIGO`) · `/cartas` — estilo de naipes.
+- `/` — menú de inicio (modos de juego y ajustes en `/#ajustes`) · `/bot` — mesa contra el bot ·
+  `/sala` — salas con amigos (`/sala?modo=duel|trio|dupla` para elegir modo, `/sala?sala=CODIGO` para entrar) · `/cartas` — estilo de naipes.
 
 ## Correr en local
 

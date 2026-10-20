@@ -19,8 +19,8 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
 };
-const PUBLIC = new Set(['index.html', 'cartas.html', 'sala.html', 'js', 'css']);
-const PAGES = new Set(['cartas', 'sala']);
+const PUBLIC = new Set(['index.html', 'bot.html', 'cartas.html', 'sala.html', 'js', 'css']);
+const PAGES = new Set(['bot', 'cartas', 'sala']);
 
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
 const store = SUPABASE_URL && SUPABASE_SECRET_KEY ? createSupabaseStore({ url: SUPABASE_URL, key: SUPABASE_SECRET_KEY }) : undefined;
@@ -32,7 +32,7 @@ http
     if (await api.handle(req, res, url)) return;
     let rel;
     try {
-      rel = decodeURIComponent(url.pathname).replace(/^\/+/, '') || 'index.html';
+      rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
     } catch (err) {
       res.writeHead(400).end('Pedido inválido');
       return;
@@ -41,7 +41,8 @@ http
       res.writeHead(301, { Location: '/' + (rel === 'index.html' ? '' : rel.slice(0, -5)) + url.search }).end();
       return;
     }
-    if (PAGES.has(rel)) rel += '.html';
+    if (!rel) rel = 'index.html';
+    else if (PAGES.has(rel)) rel += '.html';
     const file = path.normalize(path.join(ROOT, rel));
     const top = path.relative(ROOT, file).split(path.sep)[0];
     if (!file.startsWith(ROOT + path.sep) || !PUBLIC.has(top)) {
