@@ -10,7 +10,7 @@ sin dependencias.
 |------|------|
 | `/` | Menú de inicio. Los ajustes están en `/#ajustes`. |
 | `/bot` | 1 contra 1 contra el bot. El bot va aprendiendo cómo jugás y lo recuerda en tu navegador. |
-| `/arcade` | Run infinita contra bots con personalidad. Ganás monedas y comprás amuletos en una tienda. Una derrota termina la run. Se juega solo (1 vs 1) o en dúo (`/arcade-duo`: vos y un compañero bot contra dos rivales). |
+| `/arcade` | Run infinita contra bots con personalidad. Ganás monedas y comprás amuletos en una tienda. Una derrota termina la run. Se juega solo (1 vs 1) o en dúo (`/arcade-duo`: vos y un amigo, o un compañero bot, contra dos rivales). |
 | `/sala` | Salas con amigos: duelo (1 vs 1), trío (3) o dupla (2 vs 2). Los lugares libres los ocupan bots. Se entra con `/sala?sala=CODIGO`, y una partida ya empezada se puede mirar en vivo. |
 | `/cartas` | Estilo de los naipes. |
 
@@ -38,7 +38,12 @@ canto y telón de fin de mano.
 - **Guardado:** la run se guarda en el navegador y en Supabase con una identidad anónima por dispositivo
   (sin login). Al recargar seguís en la misma jugada.
 - **Dúo:** el modo se elige al empezar la run, y cada modo tiene su propia run y su propio récord.
-  - Jugás con un compañero bot que ve tus cartas, contra dos rivales con personalidades distintas.
+  - Primero se elige con quién: **con un amigo** (se arma una sala y se le manda el link `/arcade-duo?sala=CODIGO`;
+    si no llega, el anfitrión pone un bot en su lugar) o **con un bot** (la run local, que ve tus cartas).
+  - Con un amigo la run vive en el servidor, dentro de la sala: la bolsa de monedas es común, cada uno compra sus
+    amuletos y mejoras, y la ronda siguiente arranca cuando los dos dan "Listo". Si uno se va, la partida espera
+    (nadie pierde por abandono). Cada uno guarda su récord en su navegador. Como toda sala, se borra tras 2 h sin uso.
+  - Dos rivales con personalidades distintas.
   - Las monedas por mano y por envido las gana el equipo.
   - Tus amuletos son solo tuyos: lo extra cuenta cuando el punto fue tuyo (cantaste el truco, el envido se
     ganó con tus puntos o ganaste una baza de la mano). Espejito, Bola de cristal y Oído fino miran a los dos
@@ -70,12 +75,15 @@ js/
   arcade-store.js  Guardado de la run: primero local, después el servidor en segundo plano. Un lugar por modo.
   arcade-shell.js  HUD, tienda, selector de modo y pantallas del arcade, comunes a los dos modos.
   arcade-ui.js     Arcade solo: monta la mesa de ui.js.
-  arcade-duo-ui.js Arcade dúo: monta la mesa de las salas sobre una sala local.
+  arcade-duo-ui.js Arcade dúo con bot: monta la mesa de las salas sobre una sala local.
   room-engine.js   Reglas para 2, 3 y 4 jugadores, con flor. Acepta "mods" por asiento (amuletos del dúo).
   room-bot.js      Bot de las salas; juega para su equipo. Acepta rasgos (traits) para las personalidades.
   local-room.js    Sala que corre en el navegador (motor + bots), con los mismos tiempos que el servidor.
   sala-table.js    Mesa de las salas (rivales, bazas, acciones, señas). La usan las salas y el arcade dúo.
-  sala.js          Cliente de las salas: lobby y red.
+  sala.js          Cliente de las salas: lobby.
+  room-client.js   Red de las salas (pedidos, token por sala, consultas cada 1 s, compartir link). Lo usan sala.js
+                   y el dúo con amigo.
+  arcade-coop.js   Entrada del dúo ("¿con quién jugás?") y run con un amigo sobre una sala del servidor.
 css/               mesa.css (base), sala.css y vida.css (mesa y animaciones), arcade.css
 sounds/            Sonidos de cartas y fichas: packs de Kenney (kenney.nl), licencia CC0. js/sound.js
                    los carga al primer toque; si fallan, usa sonidos sintetizados.
@@ -102,6 +110,8 @@ test/
   - El servidor valida la forma de la run: listas blancas, rangos y tamaño máximo.
   - Guarda la run con un token anónimo, del que solo almacena el hash.
   - Rutas, todas POST: `/api/arcade/player`, `/api/arcade/run` y `/api/arcade/save`.
+  - Excepción: el dúo con un amigo. Ahí la run está en la sala (`room.arcade`) y el servidor es la autoridad, como
+    en cualquier sala. La tienda se usa con `POST /api/rooms/:code/shop { token, op: buy|sell|reroll|ready }`.
 - **Concurrencia:** salas y runs se guardan con `version` como bloqueo optimista.
 - **Límites:** hay rate limit por IP y chequeo de mismo origen.
 - **Store intercambiable:** cada uno tiene un store en memoria y otro en Supabase.

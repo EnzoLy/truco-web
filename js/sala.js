@@ -4,10 +4,7 @@
   'use strict';
 
   const T = window.SalaText;
-  const POLL_MS = 1000;
-  const COPIED_MS = 1800;
-  const NAME_KEY = 'truco-nombre';
-  const sessionKey = (code) => `truco-sala-${code}`;
+  const RC = window.TrucoRoomClient;
   const UNLOCK_EVENTS = ['pointerup', 'keydown', 'click'];
 
   const $ = (id) => document.getElementById(id);
@@ -17,11 +14,7 @@
     if (text !== undefined) n.textContent = text;
     return n;
   };
-  const store = {
-    get(key) { try { return localStorage.getItem(key); } catch (err) { return null; } },
-    set(key, value) { try { localStorage.setItem(key, value); } catch (err) { /* sin almacenamiento */ } },
-    remove(key) { try { localStorage.removeItem(key); } catch (err) { /* sin almacenamiento */ } },
-  };
+  const { store } = RC;
 
   // Estilo de naipe elegido en cartas.html.
   (function pickDeckSkin() {
@@ -41,37 +34,17 @@
 
   // ---------- red ----------
 
+  /** Tras una jugada propia se consulta enseguida para ver el resultado. */
   async function call(path, body) {
-    let res;
-    try {
-      res = await fetch(`/api/rooms${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    } catch (err) {
-      throw new Error('No hay conexión con el servidor');
-    }
-    const json = await res.json().catch(() => null);
-    if (!json || !json.ok) throw new Error((json && json.error) || 'Algo salió mal');
+    const data = await RC.call(path, body);
     kick();
-    return json.data;
-  }
-
-  async function info(code) {
-    let res;
-    try {
-      res = await fetch(`/api/rooms/${encodeURIComponent(code)}`);
-    } catch (err) {
-      throw new Error('No hay conexión con el servidor');
-    }
-    const json = await res.json().catch(() => null);
-    if (!json || !json.ok) throw new Error((json && json.error) || 'No existe esa sala');
-    return json.data;
+    return data;
   }
 
   // ---------- estado del cliente ----------
 
   let session = null; // { code, token }
   let snap = null;
-  let pollTimer = null;
-  let pollRun = 0;
   let watchCode = null; // sala que se mira sin sentarse
   let lastSig = ''; // ultimo estado dibujado: si la consulta trae lo mismo, no se redibuja
   let lastSeq = 0; // ultimo evento recibido: la consulta pide solo los nuevos
@@ -83,7 +56,7 @@
     onKick: (seat) => lobbyAction('/seat', { seat, kind: 'bot' }),
   });
 
-  const name = () => store.get(NAME_KEY) || '';
+  const name = () => RC.playerName.get();
   const inviteLink = (code) => `${location.origin}${location.pathname}?sala=${code}`;
 
   function show(screen) {
@@ -104,7 +77,37 @@
 
   // ---------- conexion ----------
 
-  // Sin conexion persistente: se consulta el estado cada POLL_MS, y eso tambien hace avanzar a los bots.
+  const poller = RC.createPoller({
+    urlFor() {
+      const code = session ? session.code : watchCode;
+      if (!code) return null;
+      const base = `/api/rooms/${encodeURIComponent(code)}`;
+      return session ? `${base}/state?token=${encodeURIComponent(session.token)}&since=${lastSeq}` : `${base}/watch?since=${lastSeq}`;
+    },
+    async onData(data) {
+      if (!session && data.status === 'lobby') {
+        // La revancha volvio al lobby: ya se puede entrar a jugar.
+        const code = watchCode;
+        stopWatching();
+        openJoin(code);
+        return;
+      }
+      await onSnapshot(data);
+    },
+    onDenied() {
+      const code = session ? session.code : watchCode;
+      if (session) {
+        RC.session.remove(code);
+        session = null;
+        openJoin(code, 'Ya no sos parte de esta sala o la sala se cerró.');
+      } else {
+        stopWatching();
+        openJoin(code, 'Esa sala ya no existe.');
+      }
+    },
+  });
+
+  // Sin conexion persistente: se consulta el estado cada segundo, y eso tambien hace avanzar a los bots.
   function connect() {
     resetMatch();
     kick();
@@ -112,9 +115,7 @@
 
   /** Consulta ya (tras una jugada propia) y reinicia el ciclo; descarta la respuesta de la consulta anterior. */
   function kick() {
-    pollRun += 1;
-    clearTimeout(pollTimer);
-    if (session || watchCode) poll(pollRun);
+    if (session || watchCode) poller.kick();
   }
 
   /** Mirar una partida en curso sin sentarse: mismo ciclo de consultas, pero a /watch y sin token. */
@@ -129,49 +130,16 @@
 
   function stopWatching() {
     watchCode = null;
-    pollRun += 1;
-    clearTimeout(pollTimer);
+    poller.stop();
     document.querySelector('.sala').classList.remove('spectating');
     $('spectate-banner').hidden = true;
   }
 
-  async function poll(run) {
-    const code = session ? session.code : watchCode;
-    const base = `/api/rooms/${encodeURIComponent(code)}`;
-    const url = session ? `${base}/state?token=${encodeURIComponent(session.token)}&since=${lastSeq}` : `${base}/watch?since=${lastSeq}`;
-    let denied = false;
-    try {
-      const res = await fetch(url, { cache: 'no-store' });
-      const json = await res.json().catch(() => null);
-      if (run !== pollRun) return;
-      if (json && json.ok && !session && json.data.status === 'lobby') {
-        // La revancha volvio al lobby: ya se puede entrar a jugar.
-        stopWatching();
-        openJoin(code);
-        return;
-      }
-      if (json && json.ok) await onSnapshot(json.data);
-      else if (res.status === 403 || res.status === 404) denied = true;
-    } catch (err) {
-      if (run !== pollRun) return; // sin red: se reintenta en el proximo ciclo
-    }
-    if (run !== pollRun) return;
-    if (denied) {
-      pollRun += 1;
-      if (session) {
-        store.remove(sessionKey(code));
-        session = null;
-        openJoin(code, 'Ya no sos parte de esta sala o la sala se cerró.');
-      } else {
-        stopWatching();
-        openJoin(code, 'Esa sala ya no existe.');
-      }
+  async function onSnapshot(s) {
+    if (s.arcade) {
+      location.replace(`/arcade-duo?sala=${s.code}`);
       return;
     }
-    pollTimer = setTimeout(() => poll(run), POLL_MS);
-  }
-
-  async function onSnapshot(s) {
     // Se consulta cada segundo: si no cambió nada, redibujar solo cierra menús y se come los toques.
     const sig = JSON.stringify(s);
     if (sig === lastSig) return;
@@ -208,7 +176,12 @@
 
   async function openJoin(code, message) {
     try {
-      const room = await info(code);
+      const room = await RC.info(code);
+      if (room.kind === 'arcade') {
+        // Es un dúo del arcade: tiene su propia pantalla (tienda, run compartida).
+        location.replace(`/arcade-duo?sala=${room.code}`);
+        return;
+      }
       $('join-sub').textContent = `Sala ${room.code} · ${T.MODE_LABELS[room.mode]} · ${room.seats.filter((s) => s.kind === 'human').length} jugador(es) adentro.`;
       const started = room.status !== 'lobby';
       showError('join', message || '');
@@ -228,7 +201,7 @@
   async function onCreate() {
     const chosen = document.querySelector('input[name="mode"]:checked');
     const player = $('name-home').value.trim();
-    store.set(NAME_KEY, player);
+    RC.playerName.set(player);
     showError('home', '');
     try {
       const room = await call('', { mode: chosen ? chosen.value : 'duel', name: player });
@@ -241,7 +214,7 @@
   async function onJoin() {
     const code = new URLSearchParams(location.search).get('sala');
     const player = $('name-join').value.trim();
-    store.set(NAME_KEY, player);
+    RC.playerName.set(player);
     showError('join', '');
     try {
       const room = await call(`/${encodeURIComponent(code)}/join`, { name: player });
@@ -253,7 +226,7 @@
 
   function enterRoom({ code, token }) {
     session = { code, token };
-    store.set(sessionKey(code), token);
+    RC.session.set(code, token);
     history.replaceState(null, '', `?sala=${code}`);
     connect();
   }
@@ -325,21 +298,7 @@
       : `Esperando que ${snap.seats[snap.host].name} empiece la partida.`;
   }
 
-  async function onCopy() {
-    const url = inviteLink(snap.code);
-    const button = $('copy-link');
-    try {
-      if (navigator.share) await navigator.share({ title: 'Truco', text: 'Entrá a mi mesa de truco', url });
-      else await navigator.clipboard.writeText(url);
-      const before = button.textContent;
-      button.textContent = '¡Listo!';
-      setTimeout(() => { button.textContent = before; }, COPIED_MS);
-    } catch (err) {
-      if (err && err.name === 'AbortError') return;
-      window.prompt('Copiá este link:', url);
-    }
-  }
-
+  const onCopy = () => RC.share(inviteLink(snap.code), $('copy-link'), 'Entrá a mi mesa de truco');
 
   // ---------- inicio ----------
 
@@ -383,7 +342,7 @@
   if (!code) {
     openHome();
   } else {
-    const token = store.get(sessionKey(code));
+    const token = RC.session.get(code);
     if (token) {
       session = { code, token };
       show('lobby');

@@ -100,6 +100,27 @@
 .dialog .amulet-list li { font-size: 15px; }
 .dialog a.btn { text-decoration: none; }
 
+/* ---------- dúo: ¿con quién jugás?, unirse y lobby con amigo ---------- */
+.dialog.partner-pick { width: min(100%, 680px); }
+.pick-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; text-align: left; }
+.pick-card {
+  display: grid; gap: 10px; align-content: start; padding: 16px; border-radius: 14px;
+  background: var(--enamel-hi); border: 2px solid var(--wall); box-shadow: 4px 5px 0 var(--wall);
+}
+.pick-card.friend { background: var(--porcelain); color: var(--ink); box-shadow: 4px 5px 0 var(--signal); }
+.pick-card.friend .field { color: #4a4d57; }
+.pick-card h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 24px; line-height: 1; }
+.pick-card p { margin: 0; font-size: 15px; }
+.pick-card.friend p { color: #3a3d47; }
+.pick-card .btn { align-self: end; }
+.pick-status { font-size: 12px !important; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--signal); }
+.dialog.coop-lobby { width: min(100%, 460px); }
+.coop-lobby .seat-list { text-align: left; }
+.coop-actions { display: grid; gap: 8px; }
+.coop-actions .btn[hidden] { display: none; }
+/* la tienda con amigo se redibuja cuando el otro compra: sin repetir la entrada de las cartas */
+.shop-overlay.settled .offer, .shop-overlay.settled .up-offer { animation: none; }
+
 /* ---------- tienda: la pulpería ----------
    Cabecera con el bolsillo de monedas y botones abajo siempre a la vista; lo del medio se desplaza.
    Amuletos como cartas con el color e icono de su tipo; mejoras de cartas en una lista aparte. */
@@ -231,6 +252,7 @@
 .shop-msg { margin: 0; min-height: 1.3em; text-align: center; font-size: 15px !important; font-weight: 700; color: var(--signal); }
 .shop-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .shop-actions .btn { flex: 1 1 180px; }
+.shop-actions .btn[hidden] { display: none; }
 
 /* celular: la tienda ocupa toda la pantalla; los amuletos van en fila con el icono a la izquierda */
 @media (max-width: 599px) {

@@ -14,6 +14,9 @@
   // Dúo: vos 0, rival A 1, compañero 2, rival B 3. Tu equipo es el 0.
   const DUO = 'duo';
   const MY_TEAM = 0;
+  // Dúo con un amigo (coop): la run tiene run.partner y el compañero (asiento 2) compra sus propios amuletos.
+  const PARTNER = 2;
+  const SEAT_OF = { me: HUMAN, partner: PARTNER };
   const START_COINS = 4;
   const WIN_REWARD = 4;
   const HAND_COIN = 1;
@@ -148,6 +151,21 @@
   }
 
   const isDuo = (run) => run.mode === DUO;
+  const isCoop = (run) => isDuo(run) && Boolean(run.partner);
+
+  /** Amuletos y mejoras de cada uno: 'me' (asiento 0) o 'partner' (el amigo del dúo, asiento 2). */
+  function kitOf(run, who = 'me') {
+    if (who === 'partner') {
+      if (!isCoop(run)) throw new ArcadeError('No hay compañero en esta run');
+      return { amulets: run.partner.amulets, upgrades: run.partner.upgrades };
+    }
+    return { amulets: run.amulets, upgrades: run.upgrades };
+  }
+
+  const withKit = (run, who, kit) => (who === 'partner' ? { ...run, partner: { ...run.partner, ...kit } } : { ...run, ...kit });
+
+  /** Quienes compran en esta run: solo vos, o vos y tu amigo. */
+  const buyersOf = (run) => (isCoop(run) ? ['me', 'partner'] : ['me']);
 
   // ---------- mods y economia ----------
 
@@ -183,29 +201,34 @@
 
   const rivalMods = (rival) => combineMods([...amuletMods(rival.amulets), rival.cheat ? { peek: 'all' } : null]);
 
-  /** Mods del motor para la partida actual: [vos, rival], o en el dúo [vos, rival A, compañero, rival B]. */
+  const kitMods = (kit) => combineMods([...amuletMods(kit.amulets), { upgrades: kit.upgrades }]);
+
+  /** Mods del motor para la partida actual: [vos, rival], o en el dúo [vos, rival A, compañero, rival B].
+   *  El compañero bot no lleva nada; el amigo del dúo lleva lo suyo. */
   function modsFor(run) {
-    const mine = combineMods([...amuletMods(run.amulets), { upgrades: run.upgrades }]);
-    if (isDuo(run)) return [mine, rivalMods(run.rivals[0]), {}, rivalMods(run.rivals[1])];
+    const mine = kitMods(kitOf(run));
+    if (isDuo(run)) return [mine, rivalMods(run.rivals[0]), isCoop(run) ? kitMods(kitOf(run, 'partner')) : {}, rivalMods(run.rivals[1])];
     return [mine, rivalMods(run.rival)];
   }
 
-  function econOf(run) {
+  function econOf(run, who = 'me') {
     const base = { handCoin: HAND_COIN, envidoCoin: ENVIDO_COIN, interestCap: INTEREST_CAP };
-    for (const id of run.amulets) {
+    for (const id of kitOf(run, who).amulets) {
       const econ = AMULETS[id] && AMULETS[id].econ;
       if (econ) for (const [k, v] of Object.entries(econ)) base[k] += v;
     }
     return base;
   }
 
-  const interestOf = (run) => Math.min(Math.floor(run.coins / INTEREST_STEP), econOf(run).interestCap);
+  // La bolsa es una sola: el tope de interés es el más alto de los dos (la alcancía de cualquiera sirve).
+  const interestCapOf = (run) => Math.max(...buyersOf(run).map((who) => econOf(run, who).interestCap));
+  const interestOf = (run) => Math.min(Math.floor(run.coins / INTEREST_STEP), interestCapOf(run));
   const winReward = (round) => WIN_REWARD + Math.floor(round / 2);
 
   // ---------- run ----------
 
   /** mode: 'solo' (contra un bot, motor 1v1) o 'duo' (con compañero, motor de salas en 'dupla'). */
-  function newRun(rng, { best = 0, mode = 'solo' } = {}) {
+  function newRun(rng, { best = 0, mode = 'solo', coop = false, partnerName = 'Compañero' } = {}) {
     const run = {
       v: RUN_VERSION,
       phase: 'match', // match | shop | over
@@ -218,6 +241,7 @@
       match: null,
       best,
     };
+    if (mode === DUO && coop) return { ...run, mode: DUO, rivals: rivalsFor(1, rng), partner: { name: partnerName, amulets: [], upgrades: {} } };
     if (mode === DUO) return { ...run, mode: DUO, rivals: rivalsFor(1, rng) };
     return { ...run, rival: rivalFor(1, rng) };
   }
@@ -234,15 +258,16 @@
     let run = clone(prev);
     const gains = [];
     const econ = econOf(run);
-    const gain = (amount, reason) => {
+    const gain = (amount, reason, seat = HUMAN) => {
       if (amount <= 0) return;
       run.coins += amount;
-      gains.push({ amount, reason });
+      gains.push({ amount, reason, seat });
     };
     if (isDuo(run)) {
+      const owners = buyersOf(run).map((who) => ({ seat: SEAT_OF[who], econ: econOf(run, who) }));
       for (const ev of events) {
         if (ev.type === 'game-end') run = finishMatch(run, ev.winners.includes(HUMAN), gain, rng);
-        else duoGains(ev, econ, gain);
+        else duoGains(ev, owners, gain);
       }
       return { run, gains };
     }
@@ -255,17 +280,18 @@
     return { run, gains };
   }
 
-  /** Dúo: la base la cobra tu equipo; lo extra de tus amuletos, solo si el punto fue tuyo. */
-  function duoGains(ev, econ, gain) {
+  /** Dúo: la base la cobra el equipo una vez; lo extra de los amuletos de cada uno, solo si el punto fue suyo.
+   *  owners: [{ seat, econ }] de quienes tienen amuletos (vos, y tu amigo en el coop). */
+  function duoGains(ev, owners, gain) {
     if (ev.winner !== MY_TEAM) return;
     if (ev.type === 'hand-end') {
       gain(HAND_COIN, 'mano');
-      if ((ev.trickSeats || []).includes(HUMAN)) gain(econ.handCoin - HAND_COIN, 'propina');
+      for (const o of owners) if ((ev.trickSeats || []).includes(o.seat)) gain(o.econ.handCoin - HAND_COIN, 'propina', o.seat);
     } else if (ev.type === 'envido-result') {
       gain(ENVIDO_COIN, 'envido');
-      if (ev.ownerSeat === HUMAN) gain(econ.envidoCoin - ENVIDO_COIN, 'cuentero');
-    } else if (ev.type === 'flor-result' && (ev.callers || []).includes(HUMAN)) {
-      gain(econ.envidoCoin, 'flor');
+      for (const o of owners) if (ev.ownerSeat === o.seat) gain(o.econ.envidoCoin - ENVIDO_COIN, 'cuentero', o.seat);
+    } else if (ev.type === 'flor-result') {
+      for (const o of owners) if ((ev.callers || []).includes(o.seat)) gain(o.econ.envidoCoin, 'flor', o.seat);
     }
   }
 
@@ -277,7 +303,8 @@
     gain(winReward(run.round), 'victoria');
     gain(interest, 'interés');
     // Las mejoras de cartas valen para una sola partida: se gastan al terminarla.
-    const next = { ...run, wins: run.wins + 1, phase: 'shop', match: null, upgrades: {} };
+    let next = { ...run, wins: run.wins + 1, phase: 'shop', match: null, upgrades: {} };
+    if (isCoop(run)) next = withKit(next, 'partner', { upgrades: {} });
     next.best = Math.max(next.best, next.wins);
     return rollShop(next, rng, 0);
   }
@@ -319,7 +346,7 @@
   }
 
   function rollShop(run, rng, rerolls = 0) {
-    const owned = new Set(run.amulets);
+    const owned = new Set(buyersOf(run).flatMap((who) => kitOf(run, who).amulets));
     const pool = AMULET_IDS.filter((id) => !owned.has(id));
     const items = [];
     while (items.length < SHOP_AMULETS && pool.length) {
@@ -343,33 +370,35 @@
   }
 
   /** Por que no se puede comprar el item (o null si se puede). */
-  function cantBuy(run, index) {
+  function cantBuy(run, index, who = 'me') {
     if (run.phase !== 'shop' || !run.shop) return 'La tienda está cerrada';
     const item = run.shop.items[index];
     if (!item || item.sold) return 'Ese artículo ya no está';
     if (run.coins < item.price) return 'No te alcanzan las monedas';
-    if (item.type === 'amulet' && run.amulets.length >= MAX_AMULETS) return `Ya tenés ${MAX_AMULETS} amuletos: vendé uno`;
+    if (item.type === 'amulet' && kitOf(run, who).amulets.length >= MAX_AMULETS) return `Ya tenés ${MAX_AMULETS} amuletos: vendé uno`;
     return null;
   }
 
-  function buy(run, index) {
-    const reason = cantBuy(run, index);
+  /** who: quién compra ('me' o, en el dúo con amigo, 'partner'). Las monedas salen de la bolsa común. */
+  function buy(run, index, who = 'me') {
+    const reason = cantBuy(run, index, who);
     if (reason) throw new ArcadeError(reason);
     const item = run.shop.items[index];
+    const kit = kitOf(run, who);
     const items = run.shop.items.map((it, i) => (i === index ? { ...it, sold: true } : it));
-    const next = { ...run, coins: run.coins - item.price, shop: { ...run.shop, items } };
-    if (item.type === 'amulet') next.amulets = [...run.amulets, item.id];
-    else next.upgrades = mergeUpgrades(run.upgrades, { [item.key]: { [item.field]: item.value } });
-    return next;
+    const paid = { ...run, coins: run.coins - item.price, shop: { ...run.shop, items } };
+    if (item.type === 'amulet') return withKit(paid, who, { amulets: [...kit.amulets, item.id] });
+    return withKit(paid, who, { upgrades: mergeUpgrades(kit.upgrades, { [item.key]: { [item.field]: item.value } }) });
   }
 
   const sellPrice = (id) => Math.max(1, Math.floor(AMULETS[id].price / 2));
 
-  function sell(run, id) {
+  function sell(run, id, who = 'me') {
     requireShop(run);
-    const i = run.amulets.indexOf(id);
+    const { amulets } = kitOf(run, who);
+    const i = amulets.indexOf(id);
     if (i < 0) throw new ArcadeError('No tenés ese amuleto');
-    return { ...run, coins: run.coins + sellPrice(id), amulets: run.amulets.filter((_, k) => k !== i) };
+    return withKit({ ...run, coins: run.coins + sellPrice(id) }, who, { amulets: amulets.filter((_, k) => k !== i) });
   }
 
   function reroll(run, rng) {
@@ -389,7 +418,7 @@
 
   return {
     RUN_VERSION, MAX_AMULETS, BOSS_EVERY, AMULETS, AMULET_IDS, PERSONALITIES, PERSONALITY_IDS,
-    DUO, ArcadeError, cardName, parseKey, rankText, isBossRound, isDuo, rivalFor, rivalsFor, combineMods, modsFor, econOf, interestOf, winReward,
+    DUO, PARTNER, ArcadeError, isCoop, kitOf, cardName, parseKey, rankText, isBossRound, isDuo, rivalFor, rivalsFor, combineMods, modsFor, econOf, interestOf, winReward,
     newRun, matchOptions, withMatch, onEvents, rollShop, rerollCost, cantBuy, buy, sell, sellPrice, reroll, leaveShop,
   };
 });

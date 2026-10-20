@@ -1,5 +1,6 @@
-/* Arcade dúo: la run de arcade-shell.js sobre la mesa de 4 de las salas (sala-table.js), con una sala local
- * (local-room.js) donde juegan tu compañero y los dos rivales. */
+/* Arcade dúo con un bot: la run de arcade-shell.js sobre la mesa de 4 de las salas (sala-table.js), con una sala
+ * local (local-room.js) donde juegan tu compañero bot y los dos rivales. También prepara el sonido y la planilla,
+ * que usa igual el dúo con un amigo (arcade-coop.js). */
 (function () {
   'use strict';
 
@@ -86,5 +87,9 @@
   placeBoard();
   wide.addEventListener('change', placeBoard);
 
-  window.TrucoArcadeShell.start({ mode: 'duo', mountTable });
+  // Quién arranca la run lo decide arcade-coop.js: con un bot (run local) o con un amigo (sala del servidor).
+  window.TrucoArcadeDuo = {
+    Sound,
+    startWithBot: () => window.TrucoArcadeShell.start({ mode: 'duo', mountTable }),
+  };
 })();

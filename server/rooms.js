@@ -8,10 +8,16 @@
  *
  * Contrato del store (todo async):
  *   get(code) -> { room, version } | null    create(room) -> false si el codigo existe
- *   save(room, version) -> false si cambio en el medio    count()    sweep(cutoffMs) */
+ *   save(room, version) -> false si cambio en el medio    count()    sweep(cutoffMs)
+ *
+ * Salas del arcade (dúo con un amigo): `room.arcade = { run, ready }` guarda la run compartida (js/arcade.js).
+ * Lugares fijos: 0 quien crea, 2 el amigo (o un bot), 1 y 3 los rivales de la ronda. Entre partidas la sala pasa
+ * por la tienda (status 'shop') y la ronda siguiente empieza cuando los dos dieron "Listo". Nadie pierde por
+ * abandono: si uno se va, su turno espera. */
 const crypto = require('node:crypto');
 const Room = require('../js/room-engine.js');
 const Bot = require('../js/room-bot.js');
+const A = require('../js/arcade.js');
 const { createMemoryStore } = require('./store-memory.js');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -35,6 +41,11 @@ const MAX_SAVE_ATTEMPTS = 4;
 const ENVIDO_WHATS = new Set(['envido', 'real', 'falta']);
 const FLOR_WHATS = new Set(['flor', 'contraflor', 'resto']);
 const ACTION_TYPES = new Set(['play', 'discard', 'truco', 'envido', 'accept', 'reject', 'mazo', 'ask-flor', 'flor']);
+const ARCADE = 'arcade';
+const ARCADE_HOST = 0;
+const ARCADE_PARTNER = A.PARTNER;
+const ARCADE_RIVALS = [1, 3];
+const SHOP_OPS = new Set(['buy', 'sell', 'reroll', 'ready']);
 
 /** Señas fijas entre companeros: nadie escribe texto libre. */
 const SIGNS = {
@@ -83,6 +94,7 @@ const newToken = () => crypto.randomBytes(16).toString('hex');
 const emptySeat = () => ({ kind: 'empty', name: '', token: null, lastSeen: 0 });
 const humanSeat = (name, t) => ({ kind: 'human', name, token: newToken(), lastSeen: t });
 const botSeat = (seat) => ({ kind: 'bot', name: `Bot ${seat + 1}`, token: null, lastSeen: 0 });
+const rivalSeat = (rival) => ({ kind: 'bot', name: rival.name, token: null, lastSeen: 0, traits: { ...rival.traits } });
 
 function newCode() {
   let code = '';
@@ -94,7 +106,7 @@ function newCode() {
  * si no cada asiento solo); gana el que menos ausentes tiene. No hay abandono si empatan (se fueron todos por
  * igual) ni si el unico que quedaria ganando son bots: nadie a quien dar la victoria. */
 function abandonment(room, t) {
-  if (room.status !== 'playing' || !room.state) return null;
+  if (room.arcade || room.status !== 'playing' || !room.state) return null;
   const gone = room.seats.map((s, seat) => (s.kind === 'human' && t - s.lastSeen > ABANDON_MS ? seat : -1)).filter((seat) => seat >= 0);
   if (!gone.length) return null;
   const groups = room.mode === 'dupla' ? [[0, 2], [1, 3]] : room.seats.map((_, seat) => [seat]);
@@ -146,6 +158,7 @@ function snapshotOf(room, seat, since, t) {
     events: room.events.filter((e) => e.seq > since),
     signs: !partner ? [] : room.signs.filter((x) => x.team === team && x.handNo === (room.state && room.state.handNo)),
     signOptions: !partner || room.status !== 'playing' ? [] : Object.entries(SIGNS).map(([id, text]) => ({ id, text })),
+    ...(room.arcade ? { arcade: { run: room.arcade.run, ready: { ...room.arcade.ready } } } : {}),
   };
 }
 
@@ -228,10 +241,11 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
 
   function afterAction(room, events, base) {
     record(room, events);
+    if (room.arcade) arcadeEvents(room, events);
     const { phase } = room.state;
     if (phase === 'game-over') {
       room.due = null;
-      room.status = 'ended';
+      room.status = room.arcade && room.arcade.run.phase === 'shop' ? 'shop' : 'ended';
     } else if (phase === 'hand-over') {
       room.due = { at: base + HAND_PAUSE_MS, kind: 'deal', seat: null };
     } else {
@@ -260,7 +274,7 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
     if (room.status !== 'playing' || room.seats[seat].kind !== 'bot') return;
     const view = Room.viewFor(room.state, seat, { team: true });
     if (!view.legal.length) return;
-    applyAction(room, seat, Bot.decide(view, rng), base);
+    applyAction(room, seat, Bot.decide(view, rng, room.seats[seat].traits || {}), base);
   }
 
   function applyAction(room, seat, action, base) {
@@ -274,21 +288,80 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
     afterAction(room, result.events, base);
   }
 
+  // ---------- arcade ----------
+
+  /** Monedas de la run por lo que pasó en la mesa; quedan como eventos para que los dos las vean. */
+  function arcadeEvents(room, events) {
+    if (room.arcade.run.phase !== 'match') return;
+    const { run, gains } = A.onEvents(room.arcade.run, events, rng);
+    room.arcade.run = run;
+    record(room, gains.map((g) => ({ type: 'arcade-gain', ...g })));
+  }
+
+  /** Arma la partida de la ronda: rivales en sus lugares y los amuletos de cada uno en el motor. */
+  function beginMatch(room, t) {
+    const { run } = room.arcade;
+    run.rivals.forEach((rival, i) => { room.seats[ARCADE_RIVALS[i]] = rivalSeat(rival); });
+    room.arcade.ready = {};
+    room.state = Room.newGame('dupla', rng, A.matchOptions(run));
+    room.status = 'playing';
+    room.signs = [];
+    deal(room, t);
+  }
+
+  /** Cuando todos los humanos dieron "Listo" (un bot de compañero siempre lo está), arranca la ronda siguiente. */
+  function maybeLeaveShop(room, t) {
+    const humans = [ARCADE_HOST, ARCADE_PARTNER].filter((seat) => room.seats[seat].kind === 'human');
+    if (!humans.every((seat) => room.arcade.ready[seat])) return;
+    room.arcade.run = A.leaveShop(room.arcade.run, rng);
+    beginMatch(room, t);
+  }
+
+  function requireArcade(room) {
+    if (!room.arcade) throw new RoomError(409, 'Esta sala no es del arcade');
+  }
+
+  async function shop(code, token, { op, index, id } = {}) {
+    if (!SHOP_OPS.has(op)) throw new RoomError(400, 'Operación inválida');
+    if (op === 'buy' && !Number.isInteger(index)) throw new RoomError(400, 'Artículo inválido');
+    if (op === 'sell' && !Object.hasOwn(A.AMULETS, id)) throw new RoomError(400, 'Amuleto inválido');
+    return mutate(code, (room, t) => {
+      const seat = seatOf(room, token);
+      requireArcade(room);
+      if (room.status !== 'shop') throw new RoomError(409, 'La tienda está cerrada');
+      const who = seat === ARCADE_PARTNER ? 'partner' : 'me';
+      try {
+        if (op === 'buy') room.arcade.run = A.buy(room.arcade.run, index, who);
+        else if (op === 'sell') room.arcade.run = A.sell(room.arcade.run, id, who);
+        else if (op === 'reroll') room.arcade.run = A.reroll(room.arcade.run, rng);
+        else {
+          room.arcade.ready[seat] = true;
+          maybeLeaveShop(room, t);
+        }
+      } catch (err) {
+        if (err instanceof A.ArcadeError) throw new RoomError(409, err.message);
+        throw err;
+      }
+    });
+  }
+
   // ---------- lobby ----------
 
   async function create({ mode = 'duel', name } = {}) {
-    if (!(mode in Room.MODES)) throw new RoomError(400, 'Modo inválido');
+    const arcade = mode === ARCADE;
+    if (!arcade && !(mode in Room.MODES)) throw new RoomError(400, 'Modo inválido');
     await store.sweep(now() - ROOM_IDLE_MS);
     if ((await store.count()) >= MAX_ROOMS) throw new RoomError(503, 'Hay demasiadas salas abiertas, probá más tarde');
     const t = now();
-    const n = Room.seatCount(mode);
+    const n = Room.seatCount(arcade ? 'dupla' : mode);
     for (let attempt = 0; attempt < CODE_ATTEMPTS; attempt++) {
       const room = {
-        code: newCode(), mode, n, status: 'lobby', host: 0,
+        code: newCode(), mode: arcade ? 'dupla' : mode, n, status: 'lobby', host: 0,
         seats: Array.from({ length: n }, emptySeat),
         state: null, events: [], seq: 0, signs: [], signSeq: 0, lastSign: {}, due: null, touchedAt: t,
       };
       room.seats[0] = humanSeat(cleanName(name, 'Jugador 1'), t);
+      if (arcade) room.arcade = { run: null, ready: {} };
       if (await store.create(room)) return { code: room.code, token: room.seats[0].token, seat: 0 };
     }
     throw new RoomError(503, 'No se pudo crear la sala, probá de nuevo');
@@ -297,7 +370,9 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
   function join(code, name) {
     return mutate(code, (room, t) => {
       if (room.status !== 'lobby') throw new RoomError(409, 'La partida ya empezó');
-      const seat = room.seats.findIndex((s) => s.kind === 'empty');
+      const seat = room.arcade
+        ? (room.seats[ARCADE_PARTNER].kind === 'empty' ? ARCADE_PARTNER : -1)
+        : room.seats.findIndex((s) => s.kind === 'empty');
       if (seat < 0) throw new RoomError(409, 'La sala está llena');
       room.seats[seat] = humanSeat(cleanName(name, `Jugador ${seat + 1}`), t);
       return { code: room.code, token: room.seats[seat].token, seat };
@@ -306,12 +381,14 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
 
   async function info(code) {
     const { room } = await load(code);
-    return { code: room.code, mode: room.mode, status: room.status, seats: publicSeats(room, now()) };
+    const out = { code: room.code, mode: room.mode, status: room.status, seats: publicSeats(room, now()) };
+    return room.arcade ? { ...out, kind: ARCADE } : out;
   }
 
   function configure(code, token, { mode }) {
     return mutate(code, (room) => {
       requireHost(room, token);
+      if (room.arcade) throw new RoomError(409, 'El dúo del arcade siempre es 2 contra 2');
       if (room.status !== 'lobby') throw new RoomError(409, 'Solo se puede cambiar el modo en el lobby');
       if (!(mode in Room.MODES)) throw new RoomError(400, 'Modo inválido');
       const n = Room.seatCount(mode);
@@ -329,6 +406,7 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
   function sit(code, token, seat) {
     return mutate(code, (room) => {
       const from = seatOf(room, token);
+      if (room.arcade) throw new RoomError(409, 'En el dúo del arcade los lugares son fijos');
       if (room.status !== 'lobby') throw new RoomError(409, 'La partida ya empezó');
       if (!Number.isInteger(seat) || seat < 0 || seat >= room.n) throw new RoomError(400, 'Asiento inválido');
       if (room.seats[seat].kind !== 'empty' && seat !== from) throw new RoomError(409, 'Ese lugar está ocupado');
@@ -346,6 +424,7 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
       if (!Number.isInteger(seat) || seat < 0 || seat >= room.n) throw new RoomError(400, 'Asiento inválido');
       if (!['bot', 'empty'].includes(kind)) throw new RoomError(400, 'Tipo de asiento inválido');
       if (seat === room.host) throw new RoomError(409, 'No podés cambiar tu propio lugar');
+      if (room.arcade) return setArcadeSeat(room, seat, kind, t);
       if (room.status === 'playing') {
         if (kind !== 'bot') throw new RoomError(409, 'En partida solo se puede reemplazar por un bot');
       } else if (room.status !== 'lobby') {
@@ -356,10 +435,31 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
     });
   }
 
+  /** Dúo del arcade: solo se cambia el lugar del compañero. En el lobby se puede vaciar; después, solo pasar a bot. */
+  function setArcadeSeat(room, seat, kind, t) {
+    if (seat !== ARCADE_PARTNER) throw new RoomError(409, 'Los rivales los pone el arcade');
+    if (room.status === 'ended') throw new RoomError(409, 'La run terminó');
+    if (room.status !== 'lobby' && kind !== 'bot') throw new RoomError(409, 'Durante la run solo se puede reemplazar por un bot');
+    room.seats[seat] = kind === 'bot' ? { ...botSeat(seat), name: 'Compañero bot' } : emptySeat();
+    // El bot que entra juega con lo que había comprado el amigo.
+    if (room.arcade.run && A.isCoop(room.arcade.run)) room.arcade.run = { ...room.arcade.run, partner: { ...room.arcade.run.partner, name: room.seats[seat].name || 'Compañero' } };
+    if (room.status === 'playing') driveBots(room, t);
+    if (room.status === 'shop') maybeLeaveShop(room, t);
+  }
+
   function start(code, token) {
     return mutate(code, (room, t) => {
       requireHost(room, token);
       if (room.status !== 'lobby') throw new RoomError(409, 'La partida ya empezó');
+      if (room.arcade) {
+        if (room.seats[ARCADE_PARTNER].kind === 'empty') room.seats[ARCADE_PARTNER] = { ...botSeat(ARCADE_PARTNER), name: 'Compañero bot' };
+        room.events = [];
+        // Con un bot desde el principio es la run de dúo de siempre (el bot no compra); con un amigo, compartida.
+        const friend = room.seats[ARCADE_PARTNER].kind === 'human';
+        room.arcade.run = A.newRun(rng, { mode: A.DUO, coop: friend, partnerName: room.seats[ARCADE_PARTNER].name });
+        beginMatch(room, t);
+        return snapshotOf(room, seatOf(room, token), 0, t);
+      }
       room.seats = room.seats.map((s, seat) => (s.kind === 'empty' ? botSeat(seat) : s));
       room.state = Room.newGame(room.mode, rng);
       room.status = 'playing';
@@ -378,6 +478,7 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
       room.state = null;
       room.events = [];
       room.signs = [];
+      if (room.arcade) room.arcade = { run: null, ready: {} };
     });
   }
 
@@ -427,7 +528,7 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
 
   const sweep = () => store.sweep(now() - ROOM_IDLE_MS);
 
-  return { create, join, info, configure, sit, setSeat, start, rematch, act, sign, snapshot, watch, sweep, size: () => store.count() };
+  return { create, join, info, configure, sit, setSeat, start, rematch, act, sign, shop, snapshot, watch, sweep, size: () => store.count() };
 }
 
 module.exports = { createRoomManager, RoomError, SIGNS, HAND_PAUSE_MS, ABANDON_MS, BOT_DELAY_MIN_MS, BOT_DELAY_SPREAD_MS, PRESENCE_MS };

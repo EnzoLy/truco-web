@@ -141,6 +141,7 @@ function createApi(manager, { now = Date.now, arcade = null } = {}) {
         case 'rematch': await manager.rematch(code, body.token); return ok(res, {}), true;
         case 'act': await manager.act(code, body.token, body.action); return ok(res, {}), true;
         case 'sign': await manager.sign(code, body.token, body.sign); return ok(res, {}), true;
+        case 'shop': await manager.shop(code, body.token, { op: body.op, index: body.index, id: body.id }); return ok(res, {}), true;
         default: return fail(res, 404, 'Ruta inexistente'), true;
       }
     } catch (err) {

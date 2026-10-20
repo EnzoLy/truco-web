@@ -82,11 +82,19 @@
       </div>
     </details>
 
+    <details class="panel" id="partner-panel" hidden>
+      <summary id="partner-panel-title">Amuletos de tu compañero</summary>
+      <div class="panel-body">
+        <ul class="amulet-list" id="partner-amulets"></ul>
+      </div>
+    </details>
+
     <details class="panel">
       <summary>Cómo funciona el dúo</summary>
       <ul>
-        <li>Jugás en pareja con un compañero bot contra dos rivales, cada uno con su personalidad. Partidas a 30 puntos; si tu equipo pierde una, se termina la run.</li>
-        <li>Tu compañero ve tus cartas y juega para el equipo. Vos no ves las suyas.</li>
+        <li>Jugás en pareja, con un amigo o con un compañero bot, contra dos rivales con su personalidad. Partidas a 30 puntos; si tu equipo pierde una, se termina la run.</li>
+        <li>El compañero bot ve tus cartas y juega para el equipo. Con un amigo se pasan señas, como en las salas.</li>
+        <li>Con un amigo la bolsa de monedas es de los dos y cada uno compra sus amuletos y mejoras. La ronda siguiente arranca cuando los dos dan "Listo".</li>
         <li>Las monedas por mano y por envido las gana el equipo. Lo extra de tus amuletos cuenta solo cuando el punto fue tuyo: el truco lo cantaste vos, el envido se ganó con tus puntos, o ganaste alguna baza de la mano.</li>
         <li>Las mejoras de cartas valen solo para tus cartas y duran la partida siguiente. Espejito y Bola de cristal te muestran cartas de los dos rivales.</li>
         <li>No hay flor, salvo que tengas el amuleto Flor.</li>
@@ -108,6 +116,56 @@
     <span class="handend-title" id="handend-title"></span>
     <strong class="handend-points" id="handend-points"></strong>
     <span class="handend-why" id="handend-why"></span>
+  </div>
+</div>
+
+<div class="overlay" id="partner-pick" hidden>
+  <div class="dialog partner-pick" role="dialog" aria-modal="true" aria-labelledby="pick-title">
+    <p class="intro-round">Arcade dúo</p>
+    <h2 id="pick-title">¿Con quién jugás?</h2>
+    <div class="pick-options">
+      <section class="pick-card friend">
+        <h3>Con un amigo</h3>
+        <p>Armás una sala y le mandás el link. La bolsa de monedas es de los dos.</p>
+        <label class="field">Tu nombre <input id="pick-name" maxlength="14" autocomplete="nickname" placeholder="Cómo te ven"></label>
+        <button class="btn primary" id="with-friend" type="button">Invitar a un amigo</button>
+      </section>
+      <section class="pick-card bot">
+        <h3>Con un bot</h3>
+        <p>Un compañero que ve tus cartas y juega para el equipo.</p>
+        <p class="pick-status" id="pick-bot-status"></p>
+        <button class="btn ghost" id="with-bot" type="button">Jugar con un bot</button>
+      </section>
+    </div>
+    <p class="form-error" id="pick-error" role="alert" hidden></p>
+    <a class="btn ghost" href="/arcade">Cambiar de modo</a>
+  </div>
+</div>
+
+<div class="overlay" id="coop-join" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="join-title">
+    <p class="intro-round">Arcade dúo</p>
+    <h2 id="join-title">Te invitaron a un dúo</h2>
+    <p id="join-sub"></p>
+    <label class="field">Tu nombre <input id="join-name" maxlength="14" autocomplete="nickname" placeholder="Cómo te ven"></label>
+    <p class="form-error" id="join-error" role="alert" hidden></p>
+    <button class="btn primary" id="join-go" type="button">Entrar</button>
+    <a class="btn ghost" href="/arcade-duo">Jugar por mi cuenta</a>
+  </div>
+</div>
+
+<div class="overlay" id="coop-lobby" hidden>
+  <div class="dialog coop-lobby" role="dialog" aria-modal="true" aria-labelledby="coop-title">
+    <p class="intro-round">Sala <span id="coop-code"></span></p>
+    <h2 id="coop-title">Tu dúo</h2>
+    <ul class="seat-list" id="coop-seats"></ul>
+    <p class="panel-sub" id="coop-hint"></p>
+    <p class="form-error" id="coop-error" role="alert" hidden></p>
+    <div class="coop-actions">
+      <button class="btn ghost" id="coop-copy" type="button">Copiar link</button>
+      <button class="btn ghost" id="coop-bot" type="button">Poner un bot</button>
+      <button class="btn primary" id="coop-start" type="button">Empezar la run</button>
+    </div>
   </div>
 </div>
 
@@ -143,10 +201,15 @@
         <h3 class="shop-sub" id="shop-owned-title">Tu bolsillo</h3>
         <div class="shop-owned" id="shop-owned"></div>
       </section>
+      <section class="shop-sec" id="shop-partner-sec" aria-labelledby="shop-partner-title" hidden>
+        <h3 class="shop-sub" id="shop-partner-title">Bolsillo de tu compañero</h3>
+        <div class="shop-owned" id="shop-partner"></div>
+      </section>
     </div>
     <footer class="shop-foot">
       <p class="shop-msg" id="shop-msg" aria-live="polite"></p>
       <div class="shop-actions">
+        <button class="btn ghost" id="shop-kick" type="button" hidden>Seguir con un bot</button>
         <button class="btn ghost" id="shop-reroll" type="button">Otras ofertas</button>
         <button class="btn primary" id="shop-next" type="button">Siguiente ronda</button>
       </div>
@@ -159,6 +222,7 @@
     <h2 id="over-title">Fin de la run</h2>
     <p id="over-text"></p>
     <button class="btn primary" id="over-again" type="button">Nueva run</button>
+    <p class="panel-sub" id="over-wait" hidden></p>
     <a class="btn ghost" href="/arcade">Cambiar de modo</a>
     <a class="btn ghost" href="/">Volver al menú</a>
   </div>
@@ -174,10 +238,12 @@
 <script src="js/sala-text.js"></script>
 <script src="js/card-badges.js"></script>
 <script src="js/action-buttons.js"></script>
+<script src="js/room-client.js"></script>
 <script src="js/sala-table.js"></script>
 <script src="js/arcade.js"></script>
 <script src="js/arcade-store.js"></script>
 <script src="js/arcade-shell.js"></script>
 <script src="js/arcade-duo-ui.js"></script>
+<script src="js/arcade-coop.js"></script>
 </body>
 </html>
