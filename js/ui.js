@@ -23,6 +23,7 @@
     const THROW_DX = 70;
     const THROW_ROT = 36;
     const DEAL_STEP_S = 0.12;
+    const DEAL_FX_MS = 560 + 6 * DEAL_STEP_S * 1000; // duración de la animación + la última carta
     const SCORE_FX_MS = 1100;
     const CONFETTI_COUNT = 42;
     const CONFETTI_CLEANUP_MS = 4800;
@@ -226,6 +227,15 @@
     }
 
     let dealtHandNo = -1;
+    let dealStartedAt = -Infinity;
+    /** El reparto sigue aunque la mano se vuelva a dibujar a mitad (cada carta retoma donde iba). */
+    function dealFx(node, fresh) {
+      if (fresh) dealStartedAt = performance.now();
+      const elapsed = performance.now() - dealStartedAt;
+      if (elapsed >= DEAL_FX_MS) return;
+      node.classList.add('deal');
+      node.style.animationDelay = `${Number(node.style.getPropertyValue('--i')) * DEAL_STEP_S * 1000 - elapsed}ms`;
+    }
     let selected = null; // carta tocada una vez: al tocarla de nuevo se tira
 
     function renderHands() {
@@ -242,7 +252,7 @@
         const n = known.has(cardKey(c)) ? cardFace(c, false) : cardBack();
         if (known.has(cardKey(c))) n.classList.add('peeked');
         n.style.setProperty('--i', String(i + 3));
-        if (fresh) n.classList.add('deal');
+        dealFx(n, fresh && i === 0);
         return n;
       }) : []));
       const mine = $('you-hand');
@@ -252,7 +262,7 @@
         n.disabled = !canPlay;
         if (canPlay && selected === index) n.classList.add('selected');
         n.style.setProperty('--i', String(index));
-        if (fresh) n.classList.add('deal');
+        dealFx(n, false);
         n.addEventListener('click', (e) => {
           e.stopPropagation();
           onHandCard(index);

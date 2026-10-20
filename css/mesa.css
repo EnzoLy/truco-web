@@ -317,6 +317,7 @@ button.card:disabled { cursor: default; }
 @keyframes deal {
   0% { transform: translate(40vw, -46vh) rotate(40deg) scale(0.5); opacity: 0; }
   30% { opacity: 1; }
+  80% { transform: translateY(5px) rotate(-2deg) scale(1.03); }
 }
 
 /* ---------- acciones: chapitas pintadas, dentro de la placa, no una barra aparte ---------- */

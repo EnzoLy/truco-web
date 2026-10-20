@@ -17,6 +17,7 @@
   const LOG_LIMIT = 80;
   const KNOCK_MS = 150;
   const DEAL_STEP_S = 0.12;
+  const DEAL_FX_MS = 560 + 6 * DEAL_STEP_S * 1000; // duración de la animación + la última carta
   const SCORE_FX_MS = 1100;
   const TARGET = window.Truco.TARGET;
 
@@ -37,6 +38,14 @@
     let firstSnapshot = true;
     let selected = null;
     let shownHandNo = -1;
+    let dealStartedAt = -Infinity;
+    /** El reparto sigue aunque la mano se vuelva a dibujar a mitad (cada carta retoma donde iba). */
+    function dealFx(node) {
+      const elapsed = performance.now() - dealStartedAt;
+      if (elapsed >= DEAL_FX_MS) return;
+      node.classList.add('deal');
+      node.style.animationDelay = `${Number(node.style.getPropertyValue('--i')) * DEAL_STEP_S * 1000 - elapsed}ms`;
+    }
     let wasMyTurn = false;
     let busy = false;
     const seenPlays = new Set();
@@ -190,7 +199,7 @@
             const n = seen[i] ? cardFace(seen[i], false) : cardBack();
             if (seen[i]) n.classList.add('peeked');
             n.style.setProperty('--i', String(i + 3));
-            if (fresh) n.classList.add('deal');
+            dealFx(n);
             return n;
           }));
           node.count = count;
@@ -299,7 +308,7 @@
       $('you-hand').replaceChildren(...Array.from({ length: view.handCounts[view.me] }, (_, i) => {
         const back = cardBack();
         back.style.setProperty('--i', String(i));
-        if (fresh) back.classList.add('deal');
+        dealFx(back);
         return back;
       }));
       $('you-hand').classList.remove('four');
@@ -320,7 +329,7 @@
         n.disabled = !live;
         if (live && selected === index) n.classList.add('selected');
         n.style.setProperty('--i', String(index));
-        if (fresh) n.classList.add('deal');
+        dealFx(n);
         n.addEventListener('click', (e) => {
           e.stopPropagation();
           onHandCard(index, canDiscard ? 'discard' : 'play');
@@ -736,6 +745,7 @@
       const fresh = view.handNo !== shownHandNo;
       shownHandNo = view.handNo;
       if (fresh) {
+        dealStartedAt = performance.now();
         selected = null;
         const cards = view.handCounts.reduce((t, n) => t + n, 0);
         for (let i = 0; i < cards; i++) Sound.play('deal', { delay: i * DEAL_STEP_S });
@@ -807,6 +817,7 @@
       logLines.length = 0;
       selected = null;
       shownHandNo = -1;
+      dealStartedAt = -Infinity;
       rivalKey = '';
       actionsKey = '';
       firstSnapshot = true;
