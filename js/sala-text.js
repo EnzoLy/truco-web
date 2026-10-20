@@ -72,8 +72,21 @@
     }
   }
 
+  /** Quien mira no es nadie de la mesa: ningun asiento es "Vos" ni "Nosotros". */
+  const viewerOf = (view) => (view.spectator ? -1 : view.me);
+
+  /** Filas del marcador de quien mira: un equipo (o jugador) por columna, con los nombres de sus integrantes. */
+  function spectatorRows(view, seats) {
+    const teams = [...new Set(view.teams)];
+    return teams.map((team, i) => {
+      const members = view.teams.map((t, seat) => (t === team ? seat : null)).filter((seat) => seat !== null);
+      return { label: list(members.map((seat) => nameOf(seats, seat, -1))), score: view.scores[members[0]], tone: i === 0 ? 'me' : 'rival', seats: members };
+    });
+  }
+
   /** Filas del marcador segun el modo: yo, mi equipo y los rivales. */
   function scoreRows(view, seats) {
+    if (view.spectator) return spectatorRows(view, seats);
     const me = view.me;
     const others = view.scores.map((_, seat) => seat).filter((seat) => seat !== me);
     if (view.mode === 'duel') {
@@ -99,20 +112,18 @@
   const teamOf = (view, seat) => (view.teams ? view.teams[seat] : null);
 
   function teamName(view, seats, team) {
-    const mine = teamOf(view, view.me);
-    if (view.mode === 'duel') {
-      const seat = view.teams.findIndex((t) => t === team);
-      return nameOf(seats, seat, view.me);
-    }
-    if (view.mode === 'dupla') return team === mine ? 'Nosotros' : 'Ellos';
-    const members = view.teams.map((t, seat) => (t === team ? nameOf(seats, seat, view.me) : null)).filter(Boolean);
+    const me = viewerOf(view);
+    const mine = teamOf(view, me);
+    if (view.mode === 'dupla' && !view.spectator) return team === mine ? 'Nosotros' : 'Ellos';
+    const members = view.teams.map((t, seat) => (t === team ? nameOf(seats, seat, me) : null)).filter(Boolean);
     return list(members);
   }
 
   function handOverText(view, seats) {
     const r = view.handResult;
     if (!r) return '';
-    const mine = teamOf(view, view.me);
+    const mine = teamOf(view, viewerOf(view));
+    if (view.spectator) return `Ganó ${teamName(view, seats, r.winner)} la mano: +${r.points}`;
     if (view.mode === 'dupla') return `${r.winner === mine ? 'Ganamos' : 'Ganaron ellos'} la mano: +${r.points}`;
     if (r.winner === mine) return `Ganaste la mano: +${r.points}`;
     return `Ganó ${teamName(view, seats, r.winner)} la mano: +${r.points}`;
@@ -120,17 +131,18 @@
 
   function pendingText(view, seats) {
     const p = view.pending;
-    const caller = nameOf(seats, p.by, view.me);
+    const me = viewerOf(view);
+    const caller = nameOf(seats, p.by, me);
     const what = p.kind === 'truco' ? TRUCO_NAMES[p.level] : p.stack.map((w) => (p.kind === 'flor' ? FLOR_NAMES : ENVIDO_NAMES)[w]).join(', ');
-    const verb = p.by === view.me ? 'Cantaste' : `${caller} cantó`;
-    if (p.responders.includes(view.me)) return `${verb} ${what}. ¿Qué respondés?`;
-    const who = list(p.responders.map((seat) => nameOf(seats, seat, view.me)));
+    const verb = p.by === me ? 'Cantaste' : `${caller} cantó`;
+    if (p.responders.includes(me)) return `${verb} ${what}. ¿Qué respondés?`;
+    const who = list(p.responders.map((seat) => nameOf(seats, seat, me)));
     return `${verb} ${what}. Responde ${who}.`;
   }
 
   /** Linea de estado de la mesa. selectedCard: carta ya tocada una vez, o null. */
   function statusText(view, seats, selectedCard) {
-    const me = view.me;
+    const me = viewerOf(view);
     switch (view.phase) {
       case 'hand-over': return handOverText(view, seats);
       case 'game-over': return 'Terminó la partida';
@@ -150,10 +162,11 @@
 
   function endText(view, seats) {
     const winners = view.winners || [];
+    if (view.spectator) return { title: 'Terminó la partida', text: `Ganó ${list(winners.map((seat) => nameOf(seats, seat, -1)))}.` };
     const names = list(winners.map((seat) => nameOf(seats, seat, view.me)));
     const iWon = winners.includes(view.me) || (view.mode === 'dupla' && winners.includes((view.me + 2) % view.n));
     return { title: iWon ? '¡Ganaste la partida!' : 'Perdiste la partida', text: `Ganó ${names}.` };
   }
 
-  return { TRUCO_NAMES, ENVIDO_NAMES, FLOR_NAMES, MODE_LABELS, nameOf, list, eventText, shoutKind, speakerOf, logText, scoreRows, teamName, statusText, endText };
+  return { TRUCO_NAMES, ENVIDO_NAMES, FLOR_NAMES, MODE_LABELS, nameOf, list, eventText, shoutKind, speakerOf, logText, viewerOf, scoreRows, teamName, statusText, endText };
 });

@@ -381,3 +381,77 @@ test('API: acepta el cuerpo que Vercel ya leyo en req.body', async () => {
   assert.equal((await run('{no json')).status, 400);
   assert.equal((await run('x'.repeat(5000))).status, 413);
 });
+
+// ---------- espectadores ----------
+
+const cardKey = (c) => `${c.num}-${c.suit}`;
+
+test('mirar: ve la mesa en vivo pero ninguna carta privada, ni seña, ni jugada posible', async () => {
+  const { manager } = manualManager();
+  const a = await manager.create({ mode: 'dupla', name: 'A' });
+  const b = await manager.join(a.code, 'B');
+  const c = await manager.join(a.code, 'C');
+  const d = await manager.join(a.code, 'D');
+  await manager.start(a.code, a.token);
+  await manager.sign(a.code, a.token, 'uno-espada');
+
+  const watch = await manager.watch(a.code.toLowerCase());
+  assert.equal(watch.spectator, true);
+  assert.equal(watch.status, 'playing');
+  assert.deepEqual(watch.view.hand, []);
+  assert.deepEqual(watch.view.legal, []);
+  assert.deepEqual(watch.view.partners, []);
+  assert.equal(watch.view.myEnvido, null);
+  assert.equal(watch.view.myFlor, null);
+  assert.deepEqual(watch.signs, []);
+  assert.deepEqual(watch.signOptions, []);
+  assert.deepEqual(watch.view.handCounts, [3, 3, 3, 3]);
+  const text = JSON.stringify(watch);
+  for (const player of [a, b, c, d]) {
+    assert.equal(text.includes(player.token), false, 'no filtra tokens');
+    for (const card of (await manager.snapshot(a.code, player.token)).view.hand) {
+      assert.equal(text.includes(`"num":${card.num},"suit":"${card.suit}"`), false, `no filtra la carta ${cardKey(card)}`);
+    }
+  }
+});
+
+test('mirar: las jugadas publicas llegan como eventos y los bots avanzan solos', async () => {
+  const { manager, advance } = manualManager();
+  const a = await manager.create({ mode: 'dupla', name: 'A' });
+  await manager.start(a.code, a.token);
+  const first = await manager.watch(a.code);
+  advance(10 * 1000);
+  const later = await manager.watch(a.code, first.seq);
+  assert.ok(later.seq >= first.seq);
+  assert.ok(later.events.every((e) => e.seq > first.seq));
+});
+
+test('mirar: no cuenta como jugador ni cambia la presencia', async () => {
+  const { manager } = manualManager();
+  const a = await manager.create({ mode: 'duel', name: 'A' });
+  await manager.start(a.code, a.token);
+  const info = await manager.info(a.code);
+  await manager.watch(a.code);
+  await manager.watch(a.code);
+  assert.deepEqual((await manager.info(a.code)).seats, info.seats);
+  await throwsStatus(manager.watch('ZZZZZ'), 404);
+});
+
+test('API HTTP: /watch no pide token y muestra el estado', async () => {
+  const { server, base } = await listen();
+  try {
+    const { code, token } = (await post(`${base}/api/rooms`, { mode: 'duel', name: 'Ana' })).body.data;
+    const lobby = await getJson(`${base}/api/rooms/${code}/watch`);
+    assert.equal(lobby.body.data.status, 'lobby');
+    await post(`${base}/api/rooms/${code}/start`, { token });
+    const live = await getJson(`${base}/api/rooms/${code}/watch?since=0`);
+    assert.equal(live.status, 200);
+    assert.equal(live.body.data.spectator, true);
+    assert.equal(live.body.data.view.hand.length, 0);
+    assert.equal(JSON.stringify(live.body).includes(token), false);
+    assert.equal((await getJson(`${base}/api/rooms/ZZZZZ/watch`)).status, 404);
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+});

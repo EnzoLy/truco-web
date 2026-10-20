@@ -76,6 +76,7 @@
   let snap = null;
   let pollTimer = null;
   let pollRun = 0;
+  let watchCode = null; // sala que se mira sin sentarse
   let lastSeq = 0;
   let firstSnapshot = true;
   let selected = null;
@@ -129,16 +130,42 @@
   function kick() {
     pollRun += 1;
     clearTimeout(pollTimer);
-    if (session) poll(pollRun);
+    if (session || watchCode) poll(pollRun);
+  }
+
+  /** Mirar una partida en curso sin sentarse: mismo ciclo de consultas, pero a /watch y sin token. */
+  function watchGame(code) {
+    session = null;
+    watchCode = code;
+    resetMatch();
+    document.querySelector('.sala').classList.add('spectating');
+    $('spectate-banner').hidden = false;
+    kick();
+  }
+
+  function stopWatching() {
+    watchCode = null;
+    pollRun += 1;
+    clearTimeout(pollTimer);
+    document.querySelector('.sala').classList.remove('spectating');
+    $('spectate-banner').hidden = true;
   }
 
   async function poll(run) {
-    const { code, token } = session;
+    const code = session ? session.code : watchCode;
+    const base = `/api/rooms/${encodeURIComponent(code)}`;
+    const url = session ? `${base}/state?token=${encodeURIComponent(session.token)}&since=${lastSeq}` : `${base}/watch?since=${lastSeq}`;
     let denied = false;
     try {
-      const res = await fetch(`/api/rooms/${encodeURIComponent(code)}/state?token=${encodeURIComponent(token)}&since=${lastSeq}`, { cache: 'no-store' });
+      const res = await fetch(url, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (run !== pollRun) return;
+      if (json && json.ok && !session && json.data.status === 'lobby') {
+        // La revancha volvio al lobby: ya se puede entrar a jugar.
+        stopWatching();
+        openJoin(code);
+        return;
+      }
       if (json && json.ok) await onSnapshot(json.data);
       else if (res.status === 403 || res.status === 404) denied = true;
     } catch (err) {
@@ -147,9 +174,14 @@
     if (run !== pollRun) return;
     if (denied) {
       pollRun += 1;
-      store.remove(sessionKey(code));
-      session = null;
-      openJoin(code, 'Ya no sos parte de esta sala o la sala se cerró.');
+      if (session) {
+        store.remove(sessionKey(code));
+        session = null;
+        openJoin(code, 'Ya no sos parte de esta sala o la sala se cerró.');
+      } else {
+        stopWatching();
+        openJoin(code, 'Esa sala ya no existe.');
+      }
       return;
     }
     pollTimer = setTimeout(() => poll(run), POLL_MS);
@@ -195,8 +227,11 @@
     try {
       const room = await info(code);
       $('join-sub').textContent = `Sala ${room.code} · ${T.MODE_LABELS[room.mode]} · ${room.seats.filter((s) => s.kind === 'human').length} jugador(es) adentro.`;
-      showError('join', message || (room.status !== 'lobby' ? 'La partida ya empezó. Pedile al anfitrión que arme otra sala.' : ''));
-      $('join').disabled = room.status !== 'lobby';
+      const started = room.status !== 'lobby';
+      showError('join', message || '');
+      $('join').disabled = started;
+      $('watch').hidden = !started;
+      if (started) $('join-sub').textContent += ' La partida ya empezó: podés mirarla en vivo.';
       $('name-join').value = name();
       show('join');
       history.replaceState(null, '', `?sala=${room.code}`);
@@ -352,10 +387,12 @@
 
   // ---------- mesa ----------
 
-  const seatName = (seat) => T.nameOf(snap.seats, seat, snap.view.me);
-  const initial = (seat) => (seat === snap.view.me ? 'V' : (seatName(seat)[0] || '?').toUpperCase());
+  // Quien mira ve la mesa desde el asiento 0 pero no es nadie: ningun asiento es "Vos".
+  const viewer = () => (snap.spectator ? -1 : snap.view.me);
+  const seatName = (seat) => T.nameOf(snap.seats, seat, viewer());
+  const initial = (seat) => (seat === viewer() ? 'V' : (seatName(seat)[0] || '?').toUpperCase());
   const toneOf = (seat) => (snap.view.teams[seat] === snap.view.teams[snap.view.me] ? 'ally' : 'foe');
-  const roleOf = (seat) => (seat === snap.view.me ? 'me' : toneOf(seat));
+  const roleOf = (seat) => (snap.spectator ? (toneOf(seat) === 'ally' ? 'me' : 'foe') : seat === snap.view.me ? 'me' : toneOf(seat));
 
   // Cuadritos de cinco palitos: 6 por jugador, 3 malas a la izquierda y 3 buenas a la derecha.
   const STICKS = [[3, 3, 27, 3], [27, 3, 27, 27], [27, 27, 3, 27], [3, 27, 3, 3], [3, 27, 27, 3]];
@@ -435,16 +472,16 @@
 
   function renderRivals(view, fresh) {
     ensureRivals(view);
-    const canKick = snap.host === snap.seat && snap.status === 'playing';
+    const canKick = !snap.spectator && snap.host === snap.seat && snap.status === 'playing';
     rivalNodes.forEach((node, seat) => {
       const info = snap.seats[seat];
       const awaiting = view.pending ? view.pending.responders.includes(seat) : view.turn === seat;
       node.box.classList.toggle('turn', awaiting && view.phase !== 'hand-over');
-      node.box.classList.toggle('ally', toneOf(seat) === 'ally');
+      node.box.classList.toggle('ally', !snap.spectator && toneOf(seat) === 'ally');
       node.box.classList.toggle('off', info.kind === 'human' && !info.connected);
       const head = [el('span', 'rival-name', info.name)];
       if (view.mano === seat) head.push(el('span', 'chip', 'Mano'));
-      if (toneOf(seat) === 'ally') head.push(el('span', 'tag', 'Compañero'));
+      if (!snap.spectator && toneOf(seat) === 'ally') head.push(el('span', 'tag', 'Compañero'));
       node.head.replaceChildren(...head);
       const count = view.handCounts[seat];
       if (node.count !== count || fresh) {
@@ -518,7 +555,7 @@
 
   function leadText(leading, view) {
     if (leading.seat === null) return 'Empatan';
-    return leading.seat === view.me ? 'Vas ganando' : `Va ganando ${seatName(leading.seat)}`;
+    return !view.spectator && leading.seat === view.me ? 'Vas ganando' : `Va ganando ${seatName(leading.seat)}`;
   }
 
   function renderTricks(view) {
@@ -528,7 +565,10 @@
     const myTeam = view.teams[view.me];
     const hasAlly = view.teams.filter((t) => t === myTeam).length > 1;
     const dot = (cls, text) => { const item = el('span', '', text); const i = el('i'); i.style.background = `var(--role-${cls})`; item.prepend(i); return item; };
-    $('baza-legend').replaceChildren(dot('me', 'Vos'), ...(hasAlly ? [dot('ally', 'Compañero')] : []), dot('foe', view.n === 2 ? 'Rival' : 'Rivales'), ...(view.flor.asked ? [el('span', `flor-chip${view.flor.enabled ? ' on' : ''}`, view.flor.enabled ? 'Con flor' : 'Sin flor')] : []));
+    const legend = view.spectator
+      ? [...new Set(view.teams)].map((team) => dot(team === myTeam ? 'me' : 'foe', T.teamName(view, snap.seats, team)))
+      : [dot('me', 'Vos'), ...(hasAlly ? [dot('ally', 'Compañero')] : []), dot('foe', view.n === 2 ? 'Rival' : 'Rivales')];
+    $('baza-legend').replaceChildren(...legend, ...(view.flor.asked ? [el('span', `flor-chip${view.flor.enabled ? ' on' : ''}`, view.flor.enabled ? 'Con flor' : 'Sin flor')] : []));
     const leading = view.phase === 'hand-over' || view.phase === 'game-over' ? null : currentLeader(view);
     wrap.replaceChildren(...[0, 1, 2].map((i) => {
       const winner = view.results[i];
@@ -574,7 +614,23 @@
     }));
   }
 
+  /** Quien mira ve el dorso de las cartas del asiento 0: nunca las caras. */
+  function renderSpectatorHand(view, fresh) {
+    $('you-head').firstChild.textContent = `${seatName(view.me)} `;
+    $('you-hand').replaceChildren(...Array.from({ length: view.handCounts[view.me] }, (_, i) => {
+      const back = cardBack();
+      back.style.setProperty('--i', String(i));
+      if (fresh) back.classList.add('deal');
+      return back;
+    }));
+    $('you-hand').classList.remove('four');
+    $('envido-hint').textContent = '';
+    $('you-mano').hidden = view.mano !== view.me;
+  }
+
   function renderHand(view, fresh) {
+    if (view.spectator) { renderSpectatorHand(view, fresh); return; }
+    $('you-head').firstChild.textContent = 'Vos ';
     const canPlay = view.legal.some((a) => a.type === 'play');
     const canDiscard = view.legal.some((a) => a.type === 'discard');
     const mine = $('you-hand');
@@ -781,7 +837,7 @@
   function rollShout(ev) {
     const box = $('shout');
     box.className = 'shout flor lvl1 long';
-    const who = T.nameOf(snap.seats, ev.by, snap.seat);
+    const who = T.nameOf(snap.seats, ev.by, viewer());
     const text = $('shout-text');
     const render = (label) => text.replaceChildren(el('span', 'shout-who', `${who} le pregunta al mazo`), document.createTextNode(label));
     render('?');
@@ -812,7 +868,7 @@
     const box = $('shout');
     const level = ev.type === 'truco-call' ? Math.min(Math.max(ev.level, 1), 3) : 1;
     box.className = `shout ${kind} lvl${level}`;
-    const who = speaker !== undefined ? T.nameOf(snap.seats, speaker, snap.seat) : '';
+    const who = speaker !== undefined ? T.nameOf(snap.seats, speaker, viewer()) : '';
     $('shout-text').replaceChildren(...(who ? [el('span', 'shout-who', who)] : []), document.createTextNode(text));
     void box.offsetWidth;
     box.classList.add('go');
@@ -868,11 +924,12 @@
 
   function handEnd(ev) {
     const view = snap.view;
-    const won = ev.winner === view.teams[view.me];
+    const spectating = Boolean(view.spectator);
+    const won = spectating || ev.winner === view.teams[view.me];
     const box = $('handend');
     box.className = `handend ${won ? 'win' : 'loss'}`;
     const group = view.mode === 'dupla';
-    $('handend-title').textContent = won ? (group ? '¡Mano nuestra!' : '¡Mano tuya!') : (group ? 'Mano de ellos' : 'Mano del rival');
+    $('handend-title').textContent = spectating ? `Gana ${T.teamName(view, snap.seats, ev.winner)}` : won ? (group ? '¡Mano nuestra!' : '¡Mano tuya!') : (group ? 'Mano de ellos' : 'Mano del rival');
     $('handend-why').textContent = HAND_REASONS[ev.reason] || '';
     const points = $('handend-points');
     clearInterval(countTimer);
@@ -884,7 +941,7 @@
       if (shown >= ev.points) clearInterval(countTimer);
     }, COUNT_STEP_MS);
     box.querySelectorAll('.coin').forEach((c) => c.remove());
-    if (won) {
+    if (won && !spectating) {
       for (let i = 0; i < COIN_COUNT; i++) {
         const c = el('i', 'coin');
         c.style.setProperty('--x', `${Math.round(Math.random() * 100)}vw`);
@@ -917,7 +974,7 @@
       case 'mazo': Sound.play('mazo'); break;
       case 'hand-end': handEnd(ev); break;
       case 'trick':
-        if (ev.winner !== -1) {
+        if (ev.winner !== -1 && !view.spectator) {
           Sound.play(ev.winner === mine ? 'trickWin' : 'trickLoss', { delay: 0.25 });
           sparks(ev.winner === mine);
         }
@@ -929,7 +986,7 @@
 
   function ingest(events, live) {
     events.forEach((ev) => {
-      const line = T.logText(ev, snap.seats, snap.seat);
+      const line = T.logText(ev, snap.seats, viewer());
       if (line) {
         logLines.unshift(line);
         if (logLines.length > LOG_LIMIT) logLines.pop();
@@ -971,7 +1028,10 @@
     renderSigns();
 
     const myTurn = view.legal.length > 0 && view.phase !== 'hand-over';
-    $('seat-you').classList.toggle('turn', myTurn);
+    const seatTurn = view.spectator
+      ? (view.pending ? view.pending.responders.includes(view.me) : view.turn === view.me) && view.phase !== 'hand-over'
+      : myTurn;
+    $('seat-you').classList.toggle('turn', seatTurn);
     if (myTurn && !wasMyTurn) Sound.play('turn');
     wasMyTurn = myTurn;
 
@@ -984,7 +1044,7 @@
       const end = T.endText(view, snap.seats);
       $('end-title').textContent = end.title;
       $('end-text').textContent = end.text;
-      const host = snap.host === snap.seat;
+      const host = !view.spectator && snap.host === snap.seat;
       $('again').hidden = !host;
       $('end-wait').hidden = host;
     }
@@ -1015,6 +1075,7 @@
 
   $('create').addEventListener('click', onCreate);
   $('join').addEventListener('click', onJoin);
+  $('watch').addEventListener('click', () => watchGame((new URLSearchParams(location.search).get('sala') || '').toUpperCase()));
   $('copy-link').addEventListener('click', onCopy);
   $('start').addEventListener('click', () => lobbyAction('/start'));
   $('again').addEventListener('click', () => lobbyAction('/rematch'));

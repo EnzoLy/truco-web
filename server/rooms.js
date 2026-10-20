@@ -131,6 +131,13 @@ function snapshotOf(room, seat, since, t) {
   };
 }
 
+/** Vista de quien mira: la mesa desde el asiento 0, sin ninguna carta privada ni señas. */
+function watchSnapshotOf(room, since, t) {
+  const snap = snapshotOf(room, 0, since, t);
+  const view = snap.view && { ...snap.view, spectator: true, hand: [], myEnvido: null, myFlor: null, legal: [], partners: [] };
+  return { ...snap, spectator: true, view, signs: [], signOptions: [] };
+}
+
 function createRoomManager({ store = createMemoryStore(), rng = Math.random, now = Date.now } = {}) {
   // ---------- persistencia ----------
 
@@ -385,9 +392,14 @@ function createRoomManager({ store = createMemoryStore(), rng = Math.random, now
     }, { always: false });
   }
 
+  /** Quien mira no tiene asiento ni token: ve la partida en vivo con el codigo de la sala. */
+  function watch(code, since = 0) {
+    return mutate(code, (room, t) => watchSnapshotOf(room, Math.max(0, Number(since) || 0), t), { always: false });
+  }
+
   const sweep = () => store.sweep(now() - ROOM_IDLE_MS);
 
-  return { create, join, info, configure, sit, setSeat, start, rematch, act, sign, snapshot, sweep, size: () => store.count() };
+  return { create, join, info, configure, sit, setSeat, start, rematch, act, sign, snapshot, watch, sweep, size: () => store.count() };
 }
 
 module.exports = { createRoomManager, RoomError, SIGNS, HAND_PAUSE_MS, BOT_DELAY_MIN_MS, BOT_DELAY_SPREAD_MS, PRESENCE_MS };

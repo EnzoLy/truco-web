@@ -111,6 +111,7 @@ function createApi(manager, { now = Date.now } = {}) {
           const token = url.searchParams.get('token') || '';
           return ok(res, await manager.snapshot(code, token, Number(url.searchParams.get('since')) || 0)), true;
         }
+        if (code && verb === 'watch') return ok(res, await manager.watch(code, Number(url.searchParams.get('since')) || 0)), true;
         return fail(res, 404, 'Ruta inexistente'), true;
       }
       if (req.method !== 'POST') return fail(res, 405, 'Método no permitido'), true;

@@ -50,6 +50,7 @@
       <label class="field"><span>Tu nombre</span><input id="name-join" type="text" maxlength="14" autocomplete="nickname" placeholder="Cómo te llaman"></label>
       <p class="form-error" id="error-join" role="alert" hidden></p>
       <button class="btn hot" id="join" type="button">Entrar a la sala</button>
+      <button class="btn cool" id="watch" type="button" hidden>Mirar partida</button>
       <a class="text-link" href="sala">Crear mi propia sala</a>
     </section>
 
@@ -67,6 +68,7 @@
     </section>
 
     <section class="screen-table" id="screen-table" hidden>
+      <p class="hint spectate-banner" id="spectate-banner" hidden>Estás mirando la partida en vivo. Las cartas de los jugadores no se ven.</p>
       <div class="table-main">
         <div class="rivals" id="rivals"></div>
         <div class="center">

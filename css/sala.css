@@ -233,3 +233,7 @@
 .trick-result.lead-foe { color: #ff9d96; }
 @media (prefers-reduced-motion: reduce) { .stack .card.leading { animation: none; } }
 .baza .trick-label { margin-top: 8px; }
+
+/* Espectador: ve la mesa pero no juega. */
+.spectate-banner { margin: 0 0 8px; text-align: center; }
+.spectating .seat-you .hand .card img, .spectating .seat-you .hand .card::before { animation: none; }

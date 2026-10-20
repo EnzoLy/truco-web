@@ -104,3 +104,35 @@ test('textos de flor: cantos, respuestas y resultados', () => {
   assert.equal(T.logText({ type: 'flor-result', uncontested: true, awarded: 3 }, seats, 0), 'Flor: +3');
   assert.match(T.logText({ type: 'flor-result', accepted: true, awarded: 6, points: [38, 26] }, seats, 0), /Vos 38, Beto 26\. \+6/);
 });
+
+// ---------- quien mira ----------
+
+const seatsOf = (...names) => names.map((name) => ({ name, kind: 'human' }));
+const watcher = (mode, extra = {}) => ({
+  me: 0, spectator: true, mode, n: mode === 'dupla' ? 4 : mode === 'trio' ? 3 : 2,
+  teams: mode === 'dupla' ? [0, 1, 0, 1] : mode === 'trio' ? [0, 1, 2] : [0, 1],
+  scores: mode === 'dupla' ? [5, 3, 5, 3] : mode === 'trio' ? [5, 3, 1] : [5, 3],
+  phase: 'play', turn: 1, mano: 0, winners: null, handResult: null, pending: null, ...extra,
+});
+
+test('quien mira ve nombres, no "Vos" ni "Nosotros"', () => {
+  const duel = T.scoreRows(watcher('duel'), seatsOf('Ana', 'Beto'));
+  assert.deepEqual(duel.map((r) => [r.label, r.score]), [['Ana', 5], ['Beto', 3]]);
+  const dupla = T.scoreRows(watcher('dupla'), seatsOf('Ana', 'Beto', 'Caro', 'Dani'));
+  assert.deepEqual(dupla.map((r) => [r.label, r.score]), [['Ana y Caro', 5], ['Beto y Dani', 3]]);
+  const trio = T.scoreRows(watcher('trio'), seatsOf('Ana', 'Beto', 'Caro'));
+  assert.deepEqual(trio.map((r) => r.label), ['Ana', 'Beto', 'Caro']);
+});
+
+test('quien mira lee quien juega, quien canto y quien gano sin hablarle de vos', () => {
+  const seats = seatsOf('Ana', 'Beto', 'Caro', 'Dani');
+  const view = watcher('dupla');
+  assert.equal(T.statusText(view, seats, null), 'Juega Beto.');
+  assert.equal(T.statusText({ ...view, turn: 0 }, seats, null), 'Juega Ana.');
+  const pending = { by: 0, kind: 'truco', level: 1, stack: [], responders: [1, 3] };
+  assert.equal(T.statusText({ ...view, phase: 'respond-truco', pending }, seats, null), 'Ana cantó Truco. Responde Beto y Dani.');
+  assert.equal(T.statusText({ ...view, phase: 'hand-over', handResult: { winner: 1, points: 2 } }, seats, null), 'Ganó Beto y Dani la mano: +2');
+  assert.deepEqual(T.endText({ ...view, winners: [0, 2] }, seats), { title: 'Terminó la partida', text: 'Ganó Ana y Caro.' });
+  assert.equal(T.teamName(view, seats, 1), 'Beto y Dani');
+  assert.equal(T.statusText({ ...view, phase: 'discard', mano: 0 }, seats, null), 'Ana está eligiendo qué carta descartar.');
+});
