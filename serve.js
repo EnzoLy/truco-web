@@ -8,6 +8,9 @@ const path = require('node:path');
 const { createRoomManager } = require('./server/rooms.js');
 const { createApi } = require('./server/api.js');
 const { createSupabaseStore } = require('./server/store-supabase.js');
+const { createArcadeManager } = require('./server/arcade.js');
+const { createArcadeMemoryStore } = require('./server/arcade-store-memory.js');
+const { createArcadeSupabaseStore } = require('./server/arcade-store-supabase.js');
 
 const ROOT = __dirname;
 const PORT = Number(process.argv[2]) || 3000;
@@ -19,12 +22,14 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
 };
-const PUBLIC = new Set(['index.html', 'bot.html', 'cartas.html', 'sala.html', 'js', 'css']);
-const PAGES = new Set(['bot', 'cartas', 'sala']);
+const PUBLIC = new Set(['index.html', 'bot.html', 'arcade.html', 'cartas.html', 'sala.html', 'js', 'css']);
+const PAGES = new Set(['bot', 'arcade', 'cartas', 'sala']);
 
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
-const store = SUPABASE_URL && SUPABASE_SECRET_KEY ? createSupabaseStore({ url: SUPABASE_URL, key: SUPABASE_SECRET_KEY }) : undefined;
-const api = createApi(createRoomManager({ store }));
+const supabase = SUPABASE_URL && SUPABASE_SECRET_KEY ? { url: SUPABASE_URL, key: SUPABASE_SECRET_KEY } : null;
+const store = supabase ? createSupabaseStore(supabase) : undefined;
+const arcade = createArcadeManager({ store: supabase ? createArcadeSupabaseStore(supabase) : createArcadeMemoryStore() });
+const api = createApi(createRoomManager({ store }), { arcade });
 
 http
   .createServer(async (req, res) => {

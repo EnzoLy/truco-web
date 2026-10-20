@@ -9,7 +9,8 @@ const UNIQUE_VIOLATION = 409;
 /** Las variables de entorno suelen llegar con espacios, saltos de linea o comillas pegadas. */
 const cleanEnv = (value) => String(value ?? '').trim().replace(/^["']+|["']+$/g, '').trim();
 
-function createSupabaseStore({ url: rawUrl, key: rawKey, fetchImpl = fetch, table = TABLE }) {
+/** Cliente PostgREST minimo para una tabla. Lo comparten las salas y el arcade. */
+function createRestTable({ url: rawUrl, key: rawKey, fetchImpl = fetch, table }) {
   const url = cleanEnv(rawUrl);
   const key = cleanEnv(rawKey);
   if (!url || !key) throw new Error('Faltan SUPABASE_URL y SUPABASE_SECRET_KEY');
@@ -18,8 +19,6 @@ function createSupabaseStore({ url: rawUrl, key: rawKey, fetchImpl = fetch, tabl
   // Las claves nuevas (sb_secret_...) van solo en apikey; las JWT viejas tambien como Bearer.
   const auth = key.includes('.') ? { Authorization: `Bearer ${key}` } : {};
   const headers = (extra = {}) => ({ apikey: key, 'Content-Type': 'application/json', ...auth, ...extra });
-  const q = encodeURIComponent;
-  const iso = (ms) => new Date(ms).toISOString();
 
   async function request(path, { method = 'GET', body, prefer, range } = {}) {
     const extra = {};
@@ -33,6 +32,12 @@ function createSupabaseStore({ url: rawUrl, key: rawKey, fetchImpl = fetch, tabl
     const detail = await res.text().catch(() => '');
     throw new Error(`Supabase ${what} falló (${res.status}): ${detail.slice(0, 200)}`);
   }
+
+  return { request, fail, q: encodeURIComponent, iso: (ms) => new Date(ms).toISOString() };
+}
+
+function createSupabaseStore({ url, key, fetchImpl = fetch, table = TABLE }) {
+  const { request, fail, q, iso } = createRestTable({ url, key, fetchImpl, table });
 
   return {
     async get(code) {
@@ -74,4 +79,4 @@ function createSupabaseStore({ url: rawUrl, key: rawKey, fetchImpl = fetch, tabl
   };
 }
 
-module.exports = { createSupabaseStore };
+module.exports = { createSupabaseStore, createRestTable, UNIQUE_VIOLATION };

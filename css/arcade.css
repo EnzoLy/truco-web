@@ -1,0 +1,102 @@
+/* Modo arcade: HUD de la run, amuletos, tienda. Se apoya en mesa.css (tokens, placa, botones). */
+
+:root {
+  --kind-puntaje: var(--lacre);
+  --kind-economia: var(--signal);
+  --kind-cartas: #2f7a45;
+  --kind-info: #2f5fa8;
+  --kind-mejora: var(--porcelain);
+}
+
+/* ---------- HUD ---------- */
+.run-hud { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.hud-item {
+  position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 8px; border-radius: 10px;
+  background: var(--enamel-hi); border: 2px solid var(--wall); box-shadow: 3px 3px 0 var(--wall);
+}
+.hud-label { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--porcelain-dim); }
+.hud-val { font-family: var(--display); font-size: 24px; line-height: 1; font-variant-numeric: tabular-nums; }
+.hud-coins { background: var(--signal); color: var(--ink); }
+.hud-coins .hud-label { color: var(--enamel); }
+.hud-coins.gain { animation: bump 420ms var(--ease-snap); }
+.coin-pop {
+  position: absolute; right: 8px; top: -4px; pointer-events: none;
+  font-family: var(--display); font-size: 20px; color: var(--signal); text-shadow: 2px 2px 0 var(--wall);
+  animation: score-pop 1100ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 150ms);
+}
+
+/* ---------- amuletos ---------- */
+.amulet-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.amulet-bar[hidden] { display: none; }
+.amulet {
+  --kc: var(--kind-mejora);
+  min-height: 34px; padding: 4px 12px; border-radius: 99px;
+  background: var(--enamel); color: var(--porcelain); border: 2px solid var(--kc); box-shadow: 2px 2px 0 var(--wall);
+  font-size: 14px; font-weight: 800; letter-spacing: 0.02em;
+  transition: transform 120ms var(--ease-out);
+}
+.amulet:active { transform: translate(2px, 2px); box-shadow: none; }
+.amulet-desc { margin: 0; min-height: 1.2em; font-size: 14px; color: var(--porcelain-dim); }
+.amulet-desc:empty { display: none; }
+.kind-puntaje { --kc: var(--kind-puntaje); }
+.kind-economia { --kc: var(--kind-economia); }
+.kind-cartas { --kc: var(--kind-cartas); }
+.kind-info { --kc: var(--kind-info); }
+.kind-mejora { --kc: var(--kind-mejora); }
+
+.amulet-list { list-style: none; margin: 0; padding: 0 !important; display: grid; gap: 6px; }
+.amulet-list:empty { display: none; }
+.amulet-list li { padding-left: 10px; border-left: 4px solid var(--kc, var(--enamel)); font-size: 15px; }
+.panel .amulet-list li.kind-mejora { --kc: var(--enamel-hi); }
+.amulet-list li.empty { border-left-color: transparent; color: #4a4d58; padding-left: 0; }
+.rival-name { margin: 0; font-family: var(--display); font-size: 20px; color: var(--lacre); }
+
+/* ---------- cartas mejoradas y espiadas ---------- */
+.card.upgraded img { box-shadow: 0 0 0 3px var(--signal), 0 0 14px rgba(230, 184, 60, 0.7); }
+.card.upgraded::after {
+  content: "★"; position: absolute; top: -8px; right: -6px; display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: 50%; background: var(--signal); color: var(--ink);
+  font-size: 13px; line-height: 1; box-shadow: 1px 1px 0 var(--wall);
+}
+.seat-bot .card.peeked img { box-shadow: 0 0 0 2px var(--kind-info); }
+
+/* ---------- carteles: intro, tienda, fin ---------- */
+.dialog .intro-round { font-size: 13px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--porcelain-dim); }
+#intro.boss .dialog { box-shadow: 6px 8px 0 var(--signal), 6px 8px 0 3px var(--wall); }
+#intro.boss .intro-round { color: var(--signal); }
+.dialog .amulet-list { text-align: left; }
+.dialog .amulet-list li { font-size: 15px; }
+.dialog a.btn { text-decoration: none; }
+
+.dialog.shop { width: min(100%, 720px); max-height: calc(100dvh - 40px); overflow: auto; text-align: left; }
+.dialog.shop h2 { text-align: center; }
+.shop-coins { text-align: center; }
+.shop-coins b { font-family: var(--display); font-weight: 400; font-size: 24px; color: var(--signal); }
+.shop-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.shop-item {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px;
+  background: var(--porcelain); color: var(--ink); border: 2px solid var(--wall);
+  box-shadow: 4px 4px 0 var(--kc);
+  animation: btn-in 380ms var(--ease-out) both;
+}
+.shop-item.sold { opacity: 0.55; }
+.shop-kind { align-self: flex-start; padding: 1px 8px; border-radius: 99px; background: var(--kc); color: var(--porcelain); font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.shop-item.kind-economia .shop-kind { color: var(--ink); }
+.shop-item.kind-mejora { --kc: var(--enamel-hi); }
+.shop-name { font-family: var(--display); font-weight: 400; font-size: 17px; line-height: 1.1; }
+.shop-desc { margin: 0; flex: 1; font-size: 14px !important; color: #3a3d47; }
+.shop-card { align-self: center; width: 56px; height: 84px; border-radius: 4px; box-shadow: 0 0 0 3px var(--signal); }
+.shop-buy { flex: none !important; width: 100%; min-height: 44px; padding-inline: 6px; font-size: 14px; white-space: nowrap; }
+.shop-sub { margin: 4px 0 0; font-size: 13px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--porcelain-dim); }
+.shop-owned { display: flex; flex-wrap: wrap; gap: 8px; }
+.owned { display: flex; align-items: center; gap: 6px; }
+.shop-empty { margin: 0; font-size: 15px !important; color: var(--porcelain-dim); }
+.shop-msg { margin: 0; min-height: 1.3em; text-align: center; font-size: 15px !important; color: var(--signal); }
+.shop-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.shop-actions .btn { flex: 1 1 180px; }
+.btn.mini { min-height: 34px; padding: 4px 10px; font-size: 13px; flex: none; }
+
+@media (max-width: 420px) {
+  .hud-val { font-size: 20px; }
+  .shop-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

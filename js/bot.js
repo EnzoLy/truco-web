@@ -16,6 +16,7 @@
   const MODEL_VERSION = 1;
   const DEFAULT_SAMPLES = 140;
   const MAX_ENVIDO_RESAMPLES = 40;
+  const CHEAT_REAL_MARGIN = 5; // el tramposo sube a real envido si te saca esta ventaja
 
   // Priors: cuantos datos "imaginarios" tiene el bot antes de conocerte.
   const PRIOR = {
@@ -25,6 +26,19 @@
     envidoMean: { value: 26, weight: 3 },
     leadStrong: { value: 0.4, weight: 3 },
   };
+
+  // Personalidad: los valores por defecto son el bot de siempre.
+  const DEFAULT_TRAITS = Object.freeze({
+    trucoThreshold: 0.66, // probabilidad de ganar desde la que canta truco
+    bluffTruco: 1, // multiplicador de faroles de truco
+    bluffTrucoBase: 0, // faroles de truco aunque no te bajes nunca
+    bluffEnvido: 1, // multiplicador de faroles de envido
+    bluffEnvidoBase: 0,
+    acceptShift: 0.14, // cuanto mas exige para querer un truco
+    envidoAcceptShift: 0, // puntos de envido extra que exige para querer
+    envidoCallShift: 0, // baja (o sube) los umbrales para cantar envido
+    cardNoise: 0.35, // a veces juega la segunda mejor carta si son parecidas
+  });
 
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
   const smooth = (count, n, prior) => (count + prior.value * prior.weight) / (n + prior.weight);
@@ -96,11 +110,12 @@
   }
 
   class Bot {
-    constructor({ storage, rng = Math.random, key = STORAGE_KEY, samples = DEFAULT_SAMPLES } = {}) {
+    constructor({ storage, rng = Math.random, key = STORAGE_KEY, samples = DEFAULT_SAMPLES, traits } = {}) {
       this.storage = storage === undefined ? safeStorage() : storage;
       this.rng = rng;
       this.key = key;
       this.samples = samples;
+      this.traits = { ...DEFAULT_TRAITS, ...(traits || {}) };
       this.model = this.load();
     }
 
@@ -272,8 +287,10 @@
       const myTurnToPlay = view.playTurn === me && view.cur.cards[me] === null;
       const options = myTurnToPlay ? view.hand.map((_, index) => ({ index, wins: 0 })) : [{ index: -1, wins: 0 }];
 
+      // El tramposo ve tu mano: no necesita adivinarla.
+      const seen = Array.isArray(view.oppHand) && view.oppHand.length === unknownCount ? view.oppHand : null;
       for (let s = 0; s < samples; s++) {
-        const oppRest = this.sampleOpponent(unseen, unknownCount, view);
+        const oppRest = seen ? seen : this.sampleOpponent(unseen, unknownCount, view);
         for (const opt of options) {
           const hands = [null, null];
           hands[me] = view.hand.slice();
@@ -294,9 +311,11 @@
     sampleOpponent(unseen, count, view) {
       const draw = () => T.shuffle(unseen, this.rng).slice(0, count);
       if (view.oppEnvido === null) return draw();
+      // Lo que dijo el rival incluye su amuleto de envido; las cartas sorteadas no.
+      const target = view.oppEnvido - (view.oppEnvidoBonus || 0);
       let pick = draw();
       for (let tries = 0; tries < MAX_ENVIDO_RESAMPLES; tries++) {
-        if (T.envidoPoints([...view.oppPlayed, ...pick]) === view.oppEnvido) return pick;
+        if (T.envidoPoints([...view.oppPlayed, ...pick]) === target) return pick;
         pick = draw();
       }
       return pick;
@@ -328,12 +347,29 @@
 
     pickCard(est) {
       const ranked = est.perCard.slice().sort((a, b) => b.p - a.p);
-      if (ranked.length > 1 && ranked[0].p - ranked[1].p < 0.06 && this.rng() < 0.35) return ranked[1].index;
+      if (ranked.length > 1 && ranked[0].p - ranked[1].p < 0.06 && this.rng() < this.traits.cardNoise) return ranked[1].index;
       return ranked[0].index;
     }
 
+    /** Envido del rival si el bot ve su mano (tramposo); si no, null. */
+    knownOppEnvido(view) {
+      if (!Array.isArray(view.oppHand)) return null;
+      if (typeof view.oppEnvidoTotal === 'number') return view.oppEnvidoTotal;
+      return T.envidoPoints([...view.oppPlayed, ...view.oppHand]);
+    }
+
+    winsEnvido(view, opp) {
+      return view.myEnvido > opp || (view.myEnvido === opp && view.mano === view.me);
+    }
+
     pickEnvidoCall(view) {
-      const e = view.myEnvido;
+      const known = this.knownOppEnvido(view);
+      if (known !== null) {
+        if (!this.winsEnvido(view, known)) return null;
+        return view.myEnvido - known >= CHEAT_REAL_MARGIN ? 'real' : 'envido';
+      }
+      const t = this.traits;
+      const e = view.myEnvido + t.envidoCallShift;
       const foldRate = this.rates().envidoFold;
       const isMano = view.mano === view.me;
       const roll = this.rng();
@@ -344,18 +380,20 @@
         const chance = (isMano ? 0.3 : 0.15) + (foldRate > 0.5 ? 0.2 : 0);
         return roll < chance ? 'envido' : null;
       }
-      const bluff = clamp((foldRate - 0.35) * 0.8, 0, 0.3);
+      const bluff = clamp((foldRate - 0.35) * 0.8, 0, 0.3) * t.bluffEnvido + t.bluffEnvidoBase;
       return roll < bluff ? 'envido' : null;
     }
 
     shouldCallTruco(view, est, nextLevel) {
+      const t = this.traits;
       const p = est.best;
       const foldRate = this.rates().trucoFold;
-      const threshold = clamp(0.66 + 0.06 * (nextLevel - 1) - (foldRate - 0.35) * 0.3, 0.5, 0.9);
+      const threshold = clamp(t.trucoThreshold + 0.06 * (nextLevel - 1) - (foldRate - 0.35) * 0.3, 0.5, 0.9);
       if (p >= threshold) return this.rng() < 0.7;
-      const bluffRate = nextLevel === 1
+      const learned = nextLevel === 1
         ? clamp((foldRate - 0.3) * 0.8, 0, 0.3)
         : clamp((foldRate - 0.45) * 0.5, 0, 0.15);
+      const bluffRate = learned * t.bluffTruco + t.bluffTrucoBase;
       return p > 0.12 && p < 0.5 && this.rng() < bluffRate * 0.5;
     }
 
@@ -364,7 +402,8 @@
       const rates = this.rates();
       const value = T.valueOfTruco(level);
       const fallback = T.valueOfTruco(level - 1);
-      const signal = 0.04 * level + (rates.callHonesty - 0.5) * 0.25;
+      // Si ve tu mano no hace falta descontar por farol: ya sabe lo que tenés.
+      const signal = Array.isArray(view.oppHand) ? 0 : 0.04 * level + (rates.callHonesty - 0.5) * 0.25;
       const p = est.best - signal;
 
       if (this.has(view, 'envido') && view.myEnvido >= 28 && this.rng() < 0.6) {
@@ -374,18 +413,24 @@
         if (p >= 0.74 + 0.04 * level) return { type: 'truco' };
         if (p > 0.35 && p < 0.5 && rates.trucoFold > 0.5 && this.rng() < 0.08) return { type: 'truco' };
       }
-      const acceptThreshold = 0.5 - fallback / (2 * value) + 0.14;
+      const acceptThreshold = 0.5 - fallback / (2 * value) + this.traits.acceptShift;
       return { type: p >= acceptThreshold ? 'accept' : 'reject' };
     }
 
     answerEnvido(view) {
       const stack = view.pending.stack;
+      const options = view.legal.filter((a) => a.type === 'envido').map((a) => a.what);
+      const known = this.knownOppEnvido(view);
+      if (known !== null) {
+        if (!this.winsEnvido(view, known)) return { type: 'reject' };
+        if (options.includes('real') && view.myEnvido - known >= CHEAT_REAL_MARGIN) return { type: 'envido', what: 'real' };
+        return { type: 'accept' };
+      }
       const mean = this.rates().envidoCallMean;
       const effective = view.myEnvido + (view.mano === view.me ? 0.5 : 0);
       const acceptThreshold = clamp(
         mean - 2.5 + 1.5 * (stack.length - 1) + (stack.includes('falta') ? 3 : 0), 21, 31,
-      );
-      const options = view.legal.filter((a) => a.type === 'envido').map((a) => a.what);
+      ) + this.traits.envidoAcceptShift;
       if (options.length && effective >= acceptThreshold + 4) {
         if (options.includes('falta') && effective >= 33 && this.rng() < 0.4) return { type: 'envido', what: 'falta' };
         if (options.includes('real')) return { type: 'envido', what: 'real' };
@@ -395,5 +440,5 @@
     }
   }
 
-  return { Bot, blankModel, STORAGE_KEY };
+  return { Bot, blankModel, STORAGE_KEY, DEFAULT_TRAITS };
 });

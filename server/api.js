@@ -1,12 +1,17 @@
 'use strict';
 /* API HTTP de las salas: JSON para las acciones y GET /state para el estado (los clientes lo consultan
- * cada ~1 s). Sin dependencias; sirve igual en `node serve.js` y en una funcion de Vercel. */
+ * cada ~1 s). Tambien guarda las runs del modo arcade (/api/arcade/*) si se le pasa ese manager.
+ * Sin dependencias; sirve igual en `node serve.js` y en una funcion de Vercel. */
 const { RoomError } = require('./rooms.js');
+const { ArcadeHttpError } = require('./arcade.js');
 
 const MAX_BODY_BYTES = 4096;
+const ARCADE_MAX_BODY_BYTES = 16_384; // una run con la partida en curso
 const RATE_WINDOW_MS = 10_000;
 const RATE_LIMIT = 80;
 const MAX_TRACKED_IPS = 1000;
+const PLAYER_WINDOW_MS = 60 * 60 * 1000;
+const PLAYER_LIMIT = 10; // identidades nuevas del arcade por IP y por hora
 const CODE_RE = /^[A-Za-z0-9]{3,8}$/;
 
 function send(res, status, body) {
@@ -18,18 +23,18 @@ const ok = (res, data) => send(res, 200, { ok: true, data });
 const fail = (res, status, error) => send(res, status, { ok: false, error });
 
 /** Vercel ya leyó el cuerpo y lo deja en req.body; en Node puro hay que leer el stream. */
-function parsedBody(req) {
+function parsedBody(req, limit) {
   const raw = req.body;
   if (raw === undefined) return undefined;
   if (Buffer.isBuffer(raw) || typeof raw === 'string') {
-    if (Buffer.byteLength(raw) > MAX_BODY_BYTES) throw new RoomError(413, 'Pedido demasiado grande');
+    if (Buffer.byteLength(raw) > limit) throw new RoomError(413, 'Pedido demasiado grande');
     return raw.length ? raw.toString() : '';
   }
   return raw;
 }
 
-function readJson(req) {
-  const preread = parsedBody(req);
+function readJson(req, limit = MAX_BODY_BYTES) {
+  const preread = parsedBody(req, limit);
   if (preread !== undefined) {
     let body = preread;
     try {
@@ -45,7 +50,7 @@ function readJson(req) {
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         reject(new RoomError(413, 'Pedido demasiado grande'));
         req.destroy();
         return;
@@ -77,29 +82,36 @@ function sameOrigin(req) {
   }
 }
 
-function createApi(manager, { now = Date.now } = {}) {
-  const hits = new Map();
-
-  function limited(req) {
-    // Detras de Vercel la IP real viene en x-forwarded-for; fuera de ahi ese header lo puede falsear cualquiera.
-    const forwarded = process.env.VERCEL ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '';
-    const ip = forwarded || req.socket.remoteAddress || 'x';
-    const t = now();
-    if (hits.size > MAX_TRACKED_IPS) for (const [key, e] of hits) if (t - e.start > RATE_WINDOW_MS) hits.delete(key);
-    const entry = hits.get(ip);
-    if (!entry || t - entry.start > RATE_WINDOW_MS) {
-      hits.set(ip, { start: t, count: 1 });
-      return false;
-    }
-    entry.count += 1;
-    return entry.count > RATE_LIMIT;
+function createApi(manager, { now = Date.now, arcade = null } = {}) {
+  /** Limite por IP en una ventana fija. Devuelve una funcion req -> true si se paso. */
+  function makeLimiter(windowMs, limit) {
+    const hits = new Map();
+    return (req) => {
+      // Detras de Vercel la IP real viene en x-forwarded-for; fuera de ahi ese header lo puede falsear cualquiera.
+      const forwarded = process.env.VERCEL ? String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() : '';
+      const ip = forwarded || req.socket.remoteAddress || 'x';
+      const t = now();
+      if (hits.size > MAX_TRACKED_IPS) for (const [key, e] of hits) if (t - e.start > windowMs) hits.delete(key);
+      const entry = hits.get(ip);
+      if (!entry || t - entry.start > windowMs) {
+        hits.set(ip, { start: t, count: 1 });
+        return false;
+      }
+      entry.count += 1;
+      return entry.count > limit;
+    };
   }
+
+  const limited = makeLimiter(RATE_WINDOW_MS, RATE_LIMIT);
+  // Crear identidades del arcade agrega filas a la base: mucho mas estricto.
+  const playerLimited = makeLimiter(PLAYER_WINDOW_MS, PLAYER_LIMIT);
 
   /** Devuelve true si atendio la ruta. */
   async function handle(req, res, url) {
     if (!url.pathname.startsWith('/api/')) return false;
     try {
       const parts = url.pathname.split('/').filter(Boolean); // api, rooms, [code], [verb]
+      if (parts[1] === 'arcade') return await handleArcade(req, res, parts), true;
       if (parts[1] !== 'rooms' || parts.length > 4) return fail(res, 404, 'Ruta inexistente'), true;
       const code = parts[2];
       const verb = parts[3];
@@ -132,9 +144,27 @@ function createApi(manager, { now = Date.now } = {}) {
         default: return fail(res, 404, 'Ruta inexistente'), true;
       }
     } catch (err) {
-      if (err instanceof RoomError) return fail(res, err.status, err.message), true;
+      if (err instanceof RoomError || err instanceof ArcadeHttpError) return fail(res, err.status, err.message), true;
       console.error('Error en la API de salas:', err);
       return fail(res, 500, 'Error interno'), true;
+    }
+  }
+
+  /** POST /api/arcade/player | run | save. Todo por POST: el token nunca va en la URL. */
+  async function handleArcade(req, res, parts) {
+    const verb = parts[2];
+    if (!arcade || parts.length !== 3) return fail(res, 404, 'Ruta inexistente');
+    if (req.method !== 'POST') return fail(res, 405, 'Método no permitido');
+    if (!sameOrigin(req)) return fail(res, 403, 'Origen no permitido');
+    if (limited(req)) return fail(res, 429, 'Demasiados pedidos');
+    const body = await readJson(req, ARCADE_MAX_BODY_BYTES);
+    switch (verb) {
+      case 'player':
+        if (playerLimited(req)) return fail(res, 429, 'Demasiados jugadores nuevos, probá más tarde');
+        return ok(res, await arcade.createPlayer());
+      case 'run': return ok(res, await arcade.load(body.id, body.token));
+      case 'save': return ok(res, await arcade.save(body.id, body.token, body.run, body.version));
+      default: return fail(res, 404, 'Ruta inexistente');
     }
   }
 

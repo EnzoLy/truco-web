@@ -14,6 +14,7 @@
   const ENVIDO_VALUES = { envido: 2, real: 3 };
   const ENVIDO_OPENERS = ['envido', 'real', 'falta'];
   const HAND_SIZE = 3;
+  const ENVIDO_HINT_LINE = 27;
 
   const clone = (o) => structuredClone(o);
 
@@ -32,8 +33,13 @@
     return a;
   }
 
-  /** Jerarquia del truco: mayor numero gana la baza. */
-  function rankOf({ num, suit }) {
+  const cardKey = (card) => `${card.num}${card.suit}`;
+  const upgraded = (card, field) => card.up && typeof card.up[field] === 'number';
+
+  /** Jerarquia del truco: mayor numero gana la baza. Una carta mejorada (card.up) usa su propio valor. */
+  function rankOf(card) {
+    if (upgraded(card, 'rank')) return card.up.rank;
+    const { num, suit } = card;
     if (num === 1 && suit === 'espada') return 14;
     if (num === 1 && suit === 'basto') return 13;
     if (num === 7 && suit === 'espada') return 12;
@@ -50,7 +56,10 @@
     return 1;
   }
 
-  const envidoValue = (card) => (card.num >= 10 ? 0 : card.num);
+  const envidoValue = (card) => {
+    if (upgraded(card, 'envido')) return card.up.envido;
+    return card.num >= 10 ? 0 : card.num;
+  };
 
   function envidoPoints(cards) {
     let best = 0;
@@ -94,13 +103,43 @@
     return { accepted, rejected };
   }
 
-  function newGame(rng = Math.random) {
+  // ---------- mods (opcionales: amuletos del modo arcade) ----------
+  // mods[p] = { trucoBonus, envidoBonus, envidoCountBonus, peek: 'one'|'all', envidoHint, upgrades: { '4copa': { rank, envido } } }
+
+  const modOf = (s, p) => (s.mods && s.mods[p]) || null;
+  const modNumber = (s, p, field) => {
+    const m = modOf(s, p);
+    return m && typeof m[field] === 'number' ? m[field] : 0;
+  };
+
+  /** Marca con card.up las cartas que el duenio de cada mano tiene mejoradas. */
+  function applyUpgrades(hands, mods) {
+    return hands.map((hand, p) => {
+      const upgrades = mods && mods[p] && mods[p].upgrades;
+      if (!upgrades) return hand;
+      return hand.map((card) => (upgrades[cardKey(card)] ? { ...card, up: { ...upgrades[cardKey(card)] } } : card));
+    });
+  }
+
+  /** Envido de un jugador, con su bonus de amuletos. */
+  const envidoOf = (s, p) => envidoPoints(s.dealt[p]) + modNumber(s, p, 'envidoCountBonus');
+
+  /** Suma puntos con el bonus que corresponda. Devuelve { total, bonus }. */
+  function award(s, who, points, source) {
+    const bonus = source ? modNumber(s, who, source === 'truco' ? 'trucoBonus' : 'envidoBonus') : 0;
+    const total = points + bonus;
+    s.scores[who] += total;
+    return { total, bonus };
+  }
+
+  function newGame(rng = Math.random, opts = {}) {
     return {
       scores: [0, 0],
       mano: rng() < 0.5 ? 0 : 1,
       handNo: 0,
       phase: 'idle',
       winner: null,
+      mods: opts.mods ? clone(opts.mods) : null,
     };
   }
 
@@ -109,7 +148,7 @@
     const deck = shuffle(makeDeck(), rng);
     if (s.handNo > 0) s.mano = 1 - s.mano;
     s.handNo += 1;
-    s.hands = [deck.slice(0, HAND_SIZE), deck.slice(HAND_SIZE, HAND_SIZE * 2)];
+    s.hands = applyUpgrades([deck.slice(0, HAND_SIZE), deck.slice(HAND_SIZE, HAND_SIZE * 2)], s.mods);
     s.dealt = clone(s.hands);
     s.played = [[], []];
     s.results = [];
@@ -166,12 +205,14 @@
   const isLegal = (s, p, action) => legalActions(s, p).some((a) => sameAction(a, action));
 
   function endHand(s, ev, winner, points, reason, extra = {}) {
-    s.scores[winner] += points;
+    const withTruco = s.trucoLevel > 0 || reason === 'truco-reject';
+    const { total, bonus } = award(s, winner, points, withTruco ? 'truco' : null);
     s.pending = null;
     s.suspended = null;
     const result = {
-      winner, points, reason, trucoLevel: s.trucoLevel, lastTrucoCaller: s.lastTrucoCaller, ...extra,
+      winner, points: total, reason, trucoLevel: s.trucoLevel, lastTrucoCaller: s.lastTrucoCaller, ...extra,
     };
+    if (bonus) result.bonus = bonus;
     s.handResult = result;
     ev.push({ type: 'hand-end', ...result, scores: [...s.scores] });
     finishIfWon(s, ev, winner);
@@ -268,13 +309,15 @@
     ev.push({ type: 'envido-response', by: player, caller, response: accepted ? 'accept' : 'reject' });
     let result;
     if (accepted) {
-      const points = [envidoPoints(s.dealt[0]), envidoPoints(s.dealt[1])];
+      const points = [envidoOf(s, 0), envidoOf(s, 1)];
       const winner = points[0] > points[1] ? 0 : points[1] > points[0] ? 1 : s.mano;
       result = { accepted: true, winner, awarded: stakes.accepted, points, stack: [...stack], callers: [...callers] };
     } else {
       result = { accepted: false, winner: caller, awarded: stakes.rejected, points: null, stack: [...stack], callers: [...callers] };
     }
-    s.scores[result.winner] += result.awarded;
+    const { total, bonus } = award(s, result.winner, result.awarded, 'envido');
+    result.awarded = total;
+    if (bonus) result.bonus = bonus;
     s.envido = { done: true, stack: [...stack], result };
     ev.push({ type: 'envido-result', ...result, scores: [...s.scores] });
     if (finishIfWon(s, ev, result.winner)) {
@@ -334,7 +377,7 @@
   function viewFor(s, p) {
     const opp = 1 - p;
     const result = s.envido.result;
-    return {
+    const view = {
       me: p,
       opp,
       phase: s.phase,
@@ -354,15 +397,28 @@
       trucoRight: s.trucoRight,
       pending: s.pending ? clone(s.pending) : null,
       envido: { done: s.envido.done, stack: [...s.envido.stack] },
-      myEnvido: envidoPoints(s.dealt[p]),
+      myEnvido: envidoOf(s, p),
       oppEnvido: result && result.accepted ? result.points[opp] : null,
       legal: legalActions(s, p),
     };
+    // El bonus de envido del rival es publico (se ve su amuleto): sirve para leer su "tengo N".
+    const oppBonus = modNumber(s, opp, 'envidoCountBonus');
+    if (oppBonus) view.oppEnvidoBonus = oppBonus;
+    const mine = modOf(s, p);
+    if (!mine) return view;
+    view.mods = clone(mine);
+    if (mine.peek === 'all') {
+      view.oppHand = clone(s.hands[opp]);
+      view.oppEnvidoTotal = envidoOf(s, opp);
+    }
+    else if (mine.peek === 'one') view.oppPeek = clone(s.dealt[opp][0]);
+    if (mine.envidoHint) view.oppEnvidoHigh = envidoOf(s, opp) > ENVIDO_HINT_LINE;
+    return view;
   }
 
   return {
     SUITS, NUMBERS, TARGET, MAX_TRUCO_LEVEL,
-    makeDeck, shuffle, rankOf, envidoPoints, handWinner, valueOfTruco,
+    makeDeck, shuffle, rankOf, envidoPoints, handWinner, valueOfTruco, cardKey, applyUpgrades,
     envidoRaiseOptions, envidoStakes,
     newGame, dealHand, step, legalActions, viewFor, canCallTruco, canCallEnvido,
   };
